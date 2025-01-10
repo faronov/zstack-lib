@@ -5,6 +5,7 @@
 #include "bdb_interface.h"
 #include "hal_key.h"
 #include "hal_led.h"
+#include "led_control.h"
 
 static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_t *bdbCommissioningModeMsg);
 static void zclCommissioning_ResetBackoffRetry(void);
@@ -23,13 +24,13 @@ uint8 zclCommissioning_TaskId = 0;
 void zclCommissioning_Init(uint8 task_id) {
     zclCommissioning_TaskId = task_id;
 
+    LED_Init(); // Инициализация светодиодов
+
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
 
     ZMacSetTransmitPower(APP_TX_POWER);
 
-    // this is important to allow connects throught routers
-    // to make this work, coordinator should be compiled with this flag #define TP2_LEGACY_ZC
     requestNewTrustCenterLinkKey = FALSE;
     bdb_StartCommissioning(BDB_COMMISSIONING_MODE_NWK_STEERING | BDB_COMMISSIONING_MODE_FINDING_BINDING);
 }
@@ -54,7 +55,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_NO_NETWORK:
             LREP("No network\r\n");
-            HalLedBlink(HAL_LED_1, 3, 50, 500);
+            LED_Signal(3, 50, 500, 0); // 3 вспышки
             break;
         case BDB_COMMISSIONING_NETWORK_RESTORED:
             zclCommissioning_OnConnect();
@@ -65,39 +66,36 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
         break;
     case BDB_COMMISSIONING_NWK_STEERING:
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
+        case BDB_COMMISSIONING_IN_PROGRESS:
+            LED_Signal(1, 50, 4950, 0); // 1 вспышка каждые 5 секунд
+            break;
         case BDB_COMMISSIONING_SUCCESS:
-            HalLedBlink(HAL_LED_1, 5, 50, 500);
+            LED_Signal(3, 100, 100, 0); // 3 вспышки с интервалом 100 мс
             LREPMaster("BDB_COMMISSIONING_SUCCESS\r\n");
             zclCommissioning_OnConnect();
             break;
-
         default:
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+            LED_Signal(2, 100, 500, 5000); // Ошибка подключения
             break;
         }
-
         break;
 
     case BDB_COMMISSIONING_PARENT_LOST:
         LREPMaster("BDB_COMMISSIONING_PARENT_LOST\r\n");
+        LED_Signal(1, 50, 9950, 0); // 1 вспышка каждые 10 секунд
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_NETWORK_RESTORED:
             zclCommissioning_ResetBackoffRetry();
             break;
-
         default:
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
-            // // Parent not found, attempt to rejoin again after a exponential backoff delay
-            LREP("rejoinsLeft %d rejoinDelay=%ld\r\n", rejoinsLeft, rejoinDelay);
-            if (rejoinsLeft > 0) {
-                rejoinDelay *= APP_COMMISSIONING_END_DEVICE_REJOIN_BACKOFF;
-                rejoinsLeft -= 1;
-            } else {
-                rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_MAX_DELAY;
-            }
+            rejoinDelay *= APP_COMMISSIONING_END_DEVICE_REJOIN_BACKOFF;
+            rejoinsLeft -= 1;
             osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT, rejoinDelay);
             break;
         }
+        break;
+    case BDB_COMMISSIONING_FACTORY_RESET:
+        LED_Signal(5, 100, 200, 0); // 5 вспышек с интервалом 200 мс
         break;
     default:
         break;
@@ -122,18 +120,26 @@ void zclCommissioning_Sleep(uint8 allow) {
 }
 
 uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
+    if (events & LED_SIGNAL_EVT) {
+        LED_Signal(0, 0, 0, 0); // Обновить состояние мигания
+        return events ^ LED_SIGNAL_EVT;
+    }
+
+    if (events & LED_REPEAT_EVT) {
+        LED_Signal(0, 0, 0, 0); // Повтор цикла мигания
+        return events ^ LED_REPEAT_EVT;
+    }
+
     if (events & SYS_EVENT_MSG) {
         devStates_t zclApp_NwkState;
         afIncomingMSGPacket_t *MSGpkt;
         while ((MSGpkt = (afIncomingMSGPacket_t *)osal_msg_receive(zclCommissioning_TaskId))) {
-
             switch (MSGpkt->hdr.event) {
             case ZDO_STATE_CHANGE:
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
                 zclApp_NwkState = (devStates_t)(MSGpkt->hdr.status);
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
-                    HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                    LED_Signal(3, 100, 100, 0); // Индикация успешного подключения
                 }
                 break;
 
@@ -149,9 +155,9 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
             osal_msg_deallocate((uint8 *)MSGpkt);
         }
 
-        // return unprocessed events
         return (events ^ SYS_EVENT_MSG);
     }
+
     if (events & APP_COMMISSIONING_END_DEVICE_REJOIN_EVT) {
         LREPMaster("APP_END_DEVICE_REJOIN_EVT\r\n");
 #if ZG_BUILD_ENDDEVICE_TYPE
@@ -166,28 +172,12 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     }
 
-    // Discard unknown events
     return 0;
 }
 
 static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
-    HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
     LREP("Recieved bind request clusterId=0x%X dstAddr=0x%X ep=%d\r\n", data->clusterId, data->dstAddr, data->ep);
     uint16 maxEntries = 0, usedEntries = 0;
     bindCapacity(&maxEntries, &usedEntries);
     LREP("bindCapacity %d %usedEntries %d \r\n", maxEntries, usedEntries);
-}
-
-void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
-    if (portAndAction & HAL_KEY_PRESS) {
-#if ZG_BUILD_ENDDEVICE_TYPE
-        if (devState == DEV_NWK_ORPHAN) {
-            LREP("devState=%d try to restore network\r\n", devState);
-            bdb_ZedAttemptRecoverNwk();
-        }
-#endif
-    }
-    #if defined(POWER_SAVING)
-        NLME_SetPollRate(1);
-    #endif
 }

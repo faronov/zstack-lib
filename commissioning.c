@@ -217,7 +217,9 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             break;
 
         default:
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+            // Blink 3 times to indicate failure, then turn off to save battery
+            HalLedBlink(HAL_LED_1, 3, 50, 500);
+            LREP("Network join failed - press button to retry\r\n");
             break;
         }
 
@@ -233,7 +235,8 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             break;
 
         default:
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+            // Blink 2 times to indicate rejoin attempt (not continuous)
+            HalLedBlink(HAL_LED_1, 2, 50, 300);
 
             // Update failure metrics
             network_metrics.rejoin_attempts++;
@@ -259,6 +262,20 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
 
             // Check if should enter deep sleep mode
             zclCommissioning_CheckDeepSleep();
+
+            // Check if we should give up (network probably gone/changed)
+            if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
+                LREPMaster("GAVE UP: %d consecutive failures - network likely gone\r\n",
+                           network_metrics.consecutive_failures);
+                LREPMaster("Stopped automatic retries to save battery\r\n");
+                LREPMaster("Press button to manually retry joining\r\n");
+
+                // Turn off LED to save battery
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+
+                // Don't schedule another rejoin - wait for button press
+                break;
+            }
 
             // Try quick rejoin first (on first attempt)
             if (!quick_rejoin_attempted && network_metrics.last_channel != 0) {
@@ -300,11 +317,14 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
 
             switch (MSGpkt->hdr.event) {
             case ZDO_STATE_CHANGE:
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
                 zclApp_NwkState = (devStates_t)(MSGpkt->hdr.status);
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
+                    // Connected - turn off LED to save battery
                     HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                } else {
+                    // State change - blink twice (not continuous)
+                    HalLedBlink(HAL_LED_1, 2, 50, 300);
                 }
                 break;
 
@@ -342,7 +362,8 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
 }
 
 static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
-    HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+    // Blink 2 times to indicate bind (not continuous)
+    HalLedBlink(HAL_LED_1, 2, 50, 300);
     LREP("Recieved bind request clusterId=0x%X dstAddr=0x%X ep=%d\r\n", data->clusterId, data->dstAddr, data->ep);
     uint16 maxEntries = 0, usedEntries = 0;
     bindCapacity(&maxEntries, &usedEntries);
@@ -354,6 +375,15 @@ void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
 #if ZG_BUILD_ENDDEVICE_TYPE
         if (devState == DEV_NWK_ORPHAN) {
             LREP("devState=%d try to restore network\r\n", devState);
+
+            // Reset failure counter on manual button press
+            // Allows fresh start after "give up" threshold reached
+            if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
+                LREP("Button pressed - resetting failure counter for fresh attempt\r\n");
+                network_metrics.consecutive_failures = 0;
+                zclCommissioning_ResetBackoffRetry();
+            }
+
             bdb_ZedAttemptRecoverNwk();
         }
 #endif

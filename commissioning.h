@@ -14,6 +14,10 @@
 #define APP_COMMISSIONING_DEEP_SLEEP_THRESHOLD 50 // After 50 consecutive failures
 #define APP_COMMISSIONING_DEEP_SLEEP_INTERVAL ((uint32)3600000) // 1 hour between retries
 
+// Give up threshold - assume network is gone (coordinator reset, etc.)
+#define APP_COMMISSIONING_GIVE_UP_THRESHOLD 150 // After 150 consecutive failures (~6 days at 1hr intervals)
+// After this, device stops retrying and waits for button press
+
 // NV storage IDs for network metrics
 #define ZCD_NV_NETWORK_METRICS 0x0403
 #define ZCD_NV_LAST_CHANNEL 0x0404

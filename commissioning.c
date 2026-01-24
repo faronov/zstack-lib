@@ -27,6 +27,9 @@ NetworkMetrics_t network_metrics = {0}; // Non-static for ZCL access
 static uint8 current_tx_power = 0; // Start at 0 dBm (TX_PWR_0_DBM) to save battery
 static bool quick_rejoin_attempted = false;
 
+// Aqara-style LED behavior: track if we're in user-initiated pairing mode
+static bool pairing_mode_active = false;
+
 #ifndef APP_TX_POWER
     #define APP_TX_POWER 4  // TX_PWR_PLUS_4 (+4 dBm)
 #endif
@@ -34,6 +37,23 @@ static bool quick_rejoin_attempted = false;
 /*********************************************************************
  * HYBRID PHASE 2: HELPER FUNCTIONS
  */
+
+/*********************************************************************
+ * @fn      zclCommissioning_StartPairingMode
+ * @brief   Start Aqara-style pairing mode with continuous rapid LED blinking
+ * @param   none
+ * @return  none
+ */
+void zclCommissioning_StartPairingMode(void) {
+    pairing_mode_active = true;
+
+    // Aqara-style: Continuous rapid LED blinking during pairing
+    // Blink 255 times with 200ms period = ~51 seconds of blinking
+    // This gives plenty of time for the pairing process to complete
+    HalLedBlink(HAL_LED_1, 255, 50, 200);
+
+    LREP("Pairing mode: LED blinking rapidly (Aqara style)\r\n");
+}
 
 /*********************************************************************
  * @fn      zclCommissioning_AdaptiveTxPower
@@ -198,8 +218,10 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
     case BDB_COMMISSIONING_INITIALIZATION:
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_NO_NETWORK:
-            LREP("No network\r\n");
-            HalLedBlink(HAL_LED_1, 3, 50, 500);
+            LREP("No network - starting pairing mode\r\n");
+            // Aqara-style: Device has no network, will auto-attempt to join
+            // Start continuous rapid LED blinking to indicate pairing mode
+            zclCommissioning_StartPairingMode();
             break;
         case BDB_COMMISSIONING_NETWORK_RESTORED:
             zclCommissioning_OnConnect();
@@ -211,14 +233,33 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
     case BDB_COMMISSIONING_NWK_STEERING:
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_SUCCESS:
-            HalLedBlink(HAL_LED_1, 5, 50, 500);
+            // Aqara-style: Stop rapid blinking, show success pattern
+            if (pairing_mode_active) {
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop rapid blinking
+                // Success: 3 slow blinks (Aqara style)
+                HalLedBlink(HAL_LED_1, 3, 50, 1000);
+                pairing_mode_active = false;
+                LREP("Pairing SUCCESS: 3 slow blinks (Aqara style)\r\n");
+            } else {
+                // Automatic rejoin success (not user-initiated)
+                HalLedBlink(HAL_LED_1, 2, 50, 500);
+            }
             LREPMaster("BDB_COMMISSIONING_SUCCESS\r\n");
             zclCommissioning_OnConnect();
             break;
 
         default:
-            // Blink 3 times to indicate failure, then turn off to save battery
-            HalLedBlink(HAL_LED_1, 3, 50, 500);
+            // Aqara-style: Stop rapid blinking, show failure pattern
+            if (pairing_mode_active) {
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop rapid blinking
+                // Failure: 3 fast blinks then off (Aqara style)
+                HalLedBlink(HAL_LED_1, 3, 50, 300);
+                pairing_mode_active = false;
+                LREP("Pairing FAILED: 3 fast blinks (Aqara style)\r\n");
+            } else {
+                // Automatic rejoin failure (not user-initiated)
+                HalLedBlink(HAL_LED_1, 2, 50, 300);
+            }
             LREP("Network join failed - press button to retry\r\n");
             break;
         }

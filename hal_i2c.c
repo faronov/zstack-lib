@@ -125,6 +125,59 @@ void hali2cGroudPins(void) {
 STATIC uint8 s_xmemIsInit;
 
 /*********************************************************************
+ * @fn      HalI2C_BusRecovery
+ * @brief   Recover I2C bus if stuck (SDA held low by slave)
+ * @param   void
+ * @return  void
+ */
+STATIC void HalI2C_BusRecovery(void) {
+    // Check if bus is stuck (SDA held low)
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_IN);
+    IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+
+    if (OCM_SDA == 1) {
+        return;  // Bus is fine, no recovery needed
+    }
+
+    LREP("⚠️ I2C bus stuck (SDA=0), attempting recovery...\r\n");
+
+    // Generate up to 9 clock pulses to clear stuck transaction
+    for (uint8 i = 0; i < 9; i++) {
+        // Clock low
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_OUT);
+        OCM_SCL = 0;
+        hali2cWait(5);
+
+        // Clock high
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+        hali2cWait(5);
+
+        // Check if SDA released
+        if (OCM_SDA == 1) {
+            LREP("✅ I2C bus recovered after %d pulses\r\n", i + 1);
+            break;
+        }
+    }
+
+    // Send STOP condition to reset all devices
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_OUT);
+    OCM_SDA = 0;
+    hali2cWait(5);
+
+    IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+    hali2cWait(5);
+
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_IN);
+    hali2cWait(5);
+
+    if (OCM_SDA == 1) {
+        LREP("✅ I2C bus recovery successful\r\n");
+    } else {
+        LREP("❌ I2C bus recovery failed - hardware issue?\r\n");
+    }
+}
+
+/*********************************************************************
  * @fn      HalI2CInit
  * @brief   Initializes two-wire serial I/O bus
  * @param   void
@@ -133,6 +186,9 @@ STATIC uint8 s_xmemIsInit;
 void HalI2CInit(void) {
     if (!s_xmemIsInit) {
         s_xmemIsInit = 1;
+
+        // Hybrid Phase 2: Try to recover stuck bus on init
+        HalI2C_BusRecovery();
 
         // // Set port pins as inputs
         // IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
@@ -255,13 +311,19 @@ STATIC void hali2cWrite(bool dBit) {
  * @return  void
  */
 STATIC void hali2cClock(bool dir) {
-    uint8 maxWait = 10;
+    uint8 maxWait = 100; // Hybrid Phase 2: Increased from 10 to 100 for better clock stretching
     if (dir) {
         IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
-        /* Wait until clock is high */
+        /* Wait until clock is high (with timeout) */
         while (!OCM_SCL && maxWait) {
             hali2cWait(1);
             maxWait -= 1;
+        }
+
+        // Check for timeout
+        if (maxWait == 0) {
+            LREP("⚠️ I2C clock stretch timeout!\r\n");
+            // Don't hang - continue anyway
         }
 
     } else {

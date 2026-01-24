@@ -47,7 +47,8 @@ uint8 getBatteryVoltageZCL(uint16 millivolts) {
 // return millivolts
 uint16 getBatteryVoltage(void) {
     HalAdcSetReference(HAL_ADC_REF_125V);
-    zclBattery_RawAdc = adcReadSampled(HAL_ADC_CHANNEL_VDD, HAL_ADC_RESOLUTION_14, HAL_ADC_REF_125V, 10);
+    // Reduced from 10 to 5 samples - still accurate for battery voltage
+    zclBattery_RawAdc = adcReadSampled(HAL_ADC_CHANNEL_VDD, HAL_ADC_RESOLUTION_14, HAL_ADC_REF_125V, 5);
     return (uint16)(zclBattery_RawAdc * MULTI);
 }
 

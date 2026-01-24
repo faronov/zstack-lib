@@ -69,7 +69,8 @@ static void zclCommissioning_AdaptiveTxPower(bool increase) {
  */
 static void zclCommissioning_UpdateNetworkQuality(void) {
     // Get parent LQI from network layer
-    network_metrics.parent_lqi = NLME_GetLinkQuality();
+    // Note: NLME_GetLinkQuality() not available in Z-Stack 3.0.2, set to 0
+    network_metrics.parent_lqi = 0;
 
     // Save current channel
     network_metrics.last_channel = _NIB.nwkLogicalChannel;
@@ -99,7 +100,7 @@ static bool zclCommissioning_QuickRejoin(void) {
     // Read last successful channel from NV
     if (osal_nv_read(ZCD_NV_LAST_CHANNEL, 0, 1, &last_channel) == SUCCESS) {
         if (last_channel >= 11 && last_channel <= 26) {
-            LREPMaster("Quick rejoin attempt on channel %d\r\n", last_channel);
+            LREP("Quick rejoin attempt on channel %d\r\n", last_channel);
 
             // Note: Z-Stack handles channel setting internally
             // Just attempt rejoin, it will use scan results
@@ -120,7 +121,7 @@ static bool zclCommissioning_QuickRejoin(void) {
  */
 static void zclCommissioning_CheckDeepSleep(void) {
     if (network_metrics.consecutive_failures >= APP_COMMISSIONING_DEEP_SLEEP_THRESHOLD) {
-        LREPMaster("DEEP SLEEP MODE: Too many failures (%d)\r\n",
+        LREP("DEEP SLEEP MODE: Too many failures (%d)\r\n",
                    network_metrics.consecutive_failures);
         LREPMaster("Will retry every 1 hour to save battery\r\n");
 

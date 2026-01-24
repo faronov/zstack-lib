@@ -30,7 +30,7 @@ static void ds18b20_send(uint8);
 static uint8 ds18b20_read(void);
 static void ds18b20_send_byte(int8);
 static uint8 ds18b20_read_byte(void);
-static uint8 ds18b20_Reset(void);
+uint8 ds18b20_Reset(void);
 static void ds18b20_GroudPins(void);
 static void ds18b20_setResolution(uint8 resolution);
 static int16 ds18b20_convertTemperature(uint8 temp1, uint8 temp2, uint8 resolution);
@@ -111,7 +111,7 @@ static uint8 ds18b20_read_byte(void) {
 }
 
 // Sends reset pulse
-static uint8 ds18b20_Reset(void) {
+uint8 ds18b20_Reset(void) {
     TSENS_DIR |= TSENS_BV; // output
     TSENS_SBIT = 0;
     _delay_us(500);

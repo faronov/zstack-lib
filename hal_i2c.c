@@ -42,14 +42,89 @@ void HalI2CShutdown(void) {
     LREP("I2C pins set to Hi-Z for low power consumption\r\n");
 }
 
-// Инициализация I2C
+STATIC uint8 s_xmemIsInit;
+
+/*********************************************************************
+ * @fn      HalI2C_BusRecovery
+ * @brief   Recover I2C bus if stuck (SDA held low by slave)
+ * @param   void
+ * @return  void
+ */
+STATIC void HalI2C_BusRecovery(void) {
+    // Check if bus is stuck (SDA held low)
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_IN);
+    IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+
+    if (OCM_SDA == 1) {
+        return;  // Bus is fine, no recovery needed
+    }
+
+    LREP("[WARN] I2C bus stuck (SDA=0), attempting recovery...\r\n");
+
+    // Generate up to 9 clock pulses to clear stuck transaction
+    for (uint8 i = 0; i < 9; i++) {
+        // Clock low
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_OUT);
+        OCM_SCL = 0;
+        hali2cWait(5);
+
+        // Clock high
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+        hali2cWait(5);
+
+        // Check if SDA released
+        if (OCM_SDA == 1) {
+            LREP("[OK] I2C bus recovered after %d pulses\r\n", i + 1);
+            break;
+        }
+    }
+
+    // Send STOP condition to reset all devices
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_OUT);
+    OCM_SDA = 0;
+    hali2cWait(5);
+
+    IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+    hali2cWait(5);
+
+    IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_IN);
+    hali2cWait(5);
+
+    if (OCM_SDA == 1) {
+        LREP("[OK] I2C bus recovery successful\r\n");
+    } else {
+        LREP("[ERROR] I2C bus recovery failed - hardware issue?\r\n");
+    }
+}
+
+/*********************************************************************
+ * @fn      HalI2CInit
+ * @brief   Initializes two-wire serial I/O bus
+ * @param   void
+ * @return  void
+ */
 void HalI2CInit(void) {
     if (!s_xmemIsInit) {
         s_xmemIsInit = 1;
 
-        // Перевод пинов в Hi-Z до начала работы
-        HalI2CShutdown();
-        LREP("I2C Initialized\r\n");
+        // Hybrid Phase 2: Try to recover stuck bus on init
+        HalI2C_BusRecovery();
+
+        // // Set port pins as inputs
+        // IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+        // IO_DIR_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_IN);
+        // //
+        // // Set for general I/O operation
+        // IO_FUNC_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_GIO);
+        // IO_FUNC_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_GIO);
+        // //
+        // // Set I/O mode for pull-up/pull-down
+        // IO_IMODE_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_PUD);
+        // IO_IMODE_PORT_PIN(OCM_DATA_PORT, OCM_DATA_PIN, IO_PUD);
+
+        // // Set pins to pull-up
+        // IO_PUD_PORT(OCM_CLK_PORT, IO_PUP);
+        // IO_PUD_PORT(OCM_DATA_PORT, IO_PUP);
     }
 }
 
@@ -131,6 +206,75 @@ static void hali2cWrite(bool dBit) {
     } else {
         OCM_DATA_LOW();
     }
+
+    hali2cClock(1);
+    hali2cWait(1);
+}
+
+/*********************************************************************
+ * @fn      hali2cClock
+ * @brief   Clocks the SM-Bus. If a negative edge is going out, the
+ *          I/O pin is set as an output and driven low. If a positive
+ *          edge is going out, the pin is set as an input and the pin
+ *          pull-up drives the line high. This way, the slave device
+ *          can hold the node low if longer setup time is desired.
+ * @param   dir - clock line direction
+ * @return  void
+ */
+STATIC void hali2cClock(bool dir) {
+    uint8 maxWait = 100; // Hybrid Phase 2: Increased from 10 to 100 for better clock stretching
+    if (dir) {
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_IN);
+        /* Wait until clock is high (with timeout) */
+        while (!OCM_SCL && maxWait) {
+            hali2cWait(1);
+            maxWait -= 1;
+        }
+
+        // Check for timeout
+        if (maxWait == 0) {
+            LREP("[WARN] I2C clock stretch timeout!\r\n");
+            // Don't hang - continue anyway
+        }
+
+    } else {
+        IO_DIR_PORT_PIN(OCM_CLK_PORT, OCM_CLK_PIN, IO_OUT);
+        OCM_SCL = 0;
+    }
+    hali2cWait(1);
+}
+
+/*********************************************************************
+ * @fn      hali2cStart
+ * @brief   Initiates SM-Bus communication. Makes sure that both the
+ *          clock and data lines of the SM-Bus are high. Then the data
+ *          line is set high and clock line is set low to start I/O.
+ * @param   void
+ * @return  void
+ */
+STATIC void hali2cStart(void) {
+    uint8 retry = HAL_I2C_RETRY_CNT;
+
+    // set SCL to input but with pull-up. if slave is pulling down it will stay down.
+    hali2cClock(1);
+
+    do {
+        // wait for slave to release clock line...
+        if (OCM_SCL) // wait until the line is high...
+        {
+            break;
+        }
+        hali2cWait(1);
+    } while (--retry);
+
+    // SCL low to set SDA high so the transition will be correct.
+    hali2cClock(0);
+    OCM_DATA_HIGH(); // SDA high
+    hali2cClock(1);  // set up for transition
+    hali2cWait(1);
+    OCM_DATA_LOW(); // start
+
+    hali2cWait(1);
     hali2cClock(0);
 }
 

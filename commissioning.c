@@ -44,19 +44,19 @@ static void zclCommissioning_AdaptiveTxPower(bool increase) {
     // Only apply adaptive logic if in auto mode (mode 0)
     // Other modes: 1=Manual, 2=Max, 3=Eco are user-controlled
     if (zclApp_TxPowerMode != 0) {
-        LREP("⏭️ Skipping adaptive TX power (mode=%d, not auto)\r\n", zclApp_TxPowerMode);
+        LREP("Skipping adaptive TX power (mode=%d, not auto)\r\n", zclApp_TxPowerMode);
         return;
     }
 
     if (increase && current_tx_power < TX_PWR_PLUS_4) {
         current_tx_power++;
         ZMacSetTransmitPower(current_tx_power);
-        LREP("📡 Increased TX power to +%d dBm\r\n", current_tx_power);
+        LREP("Increased TX power to +%d dBm\r\n", current_tx_power);
         network_metrics.current_tx_power = current_tx_power;
     } else if (!increase && current_tx_power > TX_PWR_0_DBM) {
         current_tx_power = TX_PWR_0_DBM; // Reset to minimum
         ZMacSetTransmitPower(current_tx_power);
-        LREP("📡 Reset TX power to 0 dBm\r\n");
+        LREP("Reset TX power to 0 dBm\r\n");
         network_metrics.current_tx_power = current_tx_power;
     }
 }
@@ -74,7 +74,7 @@ static void zclCommissioning_UpdateNetworkQuality(void) {
     // Save current channel
     network_metrics.last_channel = _NIB.nwkLogicalChannel;
 
-    LREP("📊 Network quality: LQI=%d Channel=%d\r\n",
+    LREP("Network quality: LQI=%d Channel=%d\r\n",
          network_metrics.parent_lqi,
          network_metrics.last_channel);
 
@@ -99,7 +99,7 @@ static bool zclCommissioning_QuickRejoin(void) {
     // Read last successful channel from NV
     if (osal_nv_read(ZCD_NV_LAST_CHANNEL, 0, 1, &last_channel) == SUCCESS) {
         if (last_channel >= 11 && last_channel <= 26) {
-            LREPMaster("⚡ Quick rejoin attempt on channel %d\r\n", last_channel);
+            LREPMaster("Quick rejoin attempt on channel %d\r\n", last_channel);
 
             // Note: Z-Stack handles channel setting internally
             // Just attempt rejoin, it will use scan results
@@ -120,7 +120,7 @@ static bool zclCommissioning_QuickRejoin(void) {
  */
 static void zclCommissioning_CheckDeepSleep(void) {
     if (network_metrics.consecutive_failures >= APP_COMMISSIONING_DEEP_SLEEP_THRESHOLD) {
-        LREPMaster("😴 DEEP SLEEP MODE: Too many failures (%d)\r\n",
+        LREPMaster("DEEP SLEEP MODE: Too many failures (%d)\r\n",
                    network_metrics.consecutive_failures);
         LREPMaster("Will retry every 1 hour to save battery\r\n");
 
@@ -174,7 +174,7 @@ static void zclCommissioning_ResetBackoffRetry(void) {
 }
 
 static void zclCommissioning_OnConnect(void) {
-    LREPMaster("✅ zclCommissioning_OnConnect\r\n");
+    LREPMaster("[OK] zclCommissioning_OnConnect\r\n");
 
     // Update metrics - successful connection!
     network_metrics.rejoin_successes++;
@@ -222,10 +222,10 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
         break;
 
     case BDB_COMMISSIONING_PARENT_LOST:
-        LREPMaster("⚠️ BDB_COMMISSIONING_PARENT_LOST\r\n");
+        LREPMaster("[WARN] BDB_COMMISSIONING_PARENT_LOST\r\n");
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_NETWORK_RESTORED:
-            LREPMaster("✅ Network restored successfully!\r\n");
+            LREPMaster("[OK] Network restored successfully!\r\n");
             zclCommissioning_ResetBackoffRetry();
             network_metrics.consecutive_failures = 0;
             break;

@@ -139,7 +139,7 @@ STATIC void HalI2C_BusRecovery(void) {
         return;  // Bus is fine, no recovery needed
     }
 
-    LREP("⚠️ I2C bus stuck (SDA=0), attempting recovery...\r\n");
+    LREP("[WARN] I2C bus stuck (SDA=0), attempting recovery...\r\n");
 
     // Generate up to 9 clock pulses to clear stuck transaction
     for (uint8 i = 0; i < 9; i++) {
@@ -154,7 +154,7 @@ STATIC void HalI2C_BusRecovery(void) {
 
         // Check if SDA released
         if (OCM_SDA == 1) {
-            LREP("✅ I2C bus recovered after %d pulses\r\n", i + 1);
+            LREP("[OK] I2C bus recovered after %d pulses\r\n", i + 1);
             break;
         }
     }
@@ -171,9 +171,9 @@ STATIC void HalI2C_BusRecovery(void) {
     hali2cWait(5);
 
     if (OCM_SDA == 1) {
-        LREP("✅ I2C bus recovery successful\r\n");
+        LREP("[OK] I2C bus recovery successful\r\n");
     } else {
-        LREP("❌ I2C bus recovery failed - hardware issue?\r\n");
+        LREP("[ERROR] I2C bus recovery failed - hardware issue?\r\n");
     }
 }
 
@@ -322,7 +322,7 @@ STATIC void hali2cClock(bool dir) {
 
         // Check for timeout
         if (maxWait == 0) {
-            LREP("⚠️ I2C clock stretch timeout!\r\n");
+            LREP("[WARN] I2C clock stretch timeout!\r\n");
             // Don't hang - continue anyway
         }
 

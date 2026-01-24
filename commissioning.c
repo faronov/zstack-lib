@@ -24,11 +24,11 @@ uint8 zclCommissioning_TaskId = 0;
 
 // Hybrid Phase 2: Network Quality Metrics (typedef moved to header)
 NetworkMetrics_t network_metrics = {0}; // Non-static for ZCL access
-static uint8 current_tx_power = TX_PWR_0_DBM; // Start at 0 dBm to save battery
+static uint8 current_tx_power = 0; // Start at 0 dBm (TX_PWR_0_DBM) to save battery
 static bool quick_rejoin_attempted = false;
 
 #ifndef APP_TX_POWER
-    #define APP_TX_POWER TX_PWR_PLUS_4
+    #define APP_TX_POWER 4  // TX_PWR_PLUS_4 (+4 dBm)
 #endif
 
 /*********************************************************************
@@ -49,13 +49,13 @@ static void zclCommissioning_AdaptiveTxPower(bool increase) {
         return;
     }
 
-    if (increase && current_tx_power < TX_PWR_PLUS_4) {
+    if (increase && current_tx_power < 4) {  // 4 = TX_PWR_PLUS_4 (+4 dBm)
         current_tx_power++;
         ZMacSetTransmitPower(current_tx_power);
         LREP("Increased TX power to +%d dBm\r\n", current_tx_power);
         network_metrics.current_tx_power = current_tx_power;
-    } else if (!increase && current_tx_power > TX_PWR_0_DBM) {
-        current_tx_power = TX_PWR_0_DBM; // Reset to minimum
+    } else if (!increase && current_tx_power > 0) {  // 0 = TX_PWR_0_DBM (0 dBm)
+        current_tx_power = 0; // Reset to minimum (0 dBm)
         ZMacSetTransmitPower(current_tx_power);
         LREP("Reset TX power to 0 dBm\r\n");
         network_metrics.current_tx_power = current_tx_power;
@@ -150,8 +150,8 @@ void zclCommissioning_Init(uint8 task_id) {
              network_metrics.rejoin_failures);
 
         // Restore saved TX power
-        if (network_metrics.current_tx_power >= TX_PWR_0_DBM &&
-            network_metrics.current_tx_power <= TX_PWR_PLUS_4) {
+        if (network_metrics.current_tx_power >= 0 &&  // 0 = TX_PWR_0_DBM
+            network_metrics.current_tx_power <= 4) {  // 4 = TX_PWR_PLUS_4
             current_tx_power = network_metrics.current_tx_power;
         }
     } else {

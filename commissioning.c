@@ -7,6 +7,7 @@
 #include "hal_led.h"
 #include "nwk_globals.h"
 #include "zcl_app.h"  // For TX power mode access
+#include "ZMAC.h"     // For TX_PWR constants
 
 static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_t *bdbCommissioningModeMsg);
 static void zclCommissioning_ResetBackoffRetry(void);

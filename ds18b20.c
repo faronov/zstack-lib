@@ -17,12 +17,12 @@
 #endif
 
 #ifndef DS18B20_RETRY_COUNT
-#define DS18B20_RETRY_COUNT 10
+#define DS18B20_RETRY_COUNT 3  // Reduced from 10 to minimize blocking (3 * 300ms = 900ms max)
 #endif
 
 #define MAX_CONVERSION_TIME (750 * 1.2) // ms 750ms + some overhead
 
-#define DS18B20_RETRY_DELAY ((uint16) (MAX_CONVERSION_TIME / DS18B20_RETRY_COUNT))
+#define DS18B20_RETRY_DELAY ((uint16) (MAX_CONVERSION_TIME / DS18B20_RETRY_COUNT))  // 300ms per retry
 
 static void _delay_us(uint16);
 static void _delay_ms(uint16);
@@ -176,6 +176,9 @@ static int16 ds18b20_convertTemperature(uint8 temp1, uint8 temp2, uint8 resoluti
 }
 
 int16 readTemperature(void) {
+    // WARNING: This function BLOCKS for up to 900ms (3 retries × 300ms)
+    // during temperature conversion. This may cause Zigbee message loss.
+    // Keep DS18B20 reads infrequent to minimize network impact.
 
     uint8 temp1, temp2, retry_count = DS18B20_RETRY_COUNT;
     ds18b20_setResolution(DS18B20_RESOLUTION);
@@ -185,7 +188,7 @@ int16 readTemperature(void) {
     ds18b20_send_byte(DS18B20_CONVERT_T);
 
     while (retry_count) {
-        _delay_ms(DS18B20_RETRY_DELAY);
+        _delay_ms(DS18B20_RETRY_DELAY);  // BLOCKS for 300ms per iteration
         ds18b20_Reset();
         ds18b20_send_byte(DS18B20_SKIP_ROM);
         ds18b20_send_byte(DS18B20_READ_SCRATCHPAD);

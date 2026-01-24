@@ -265,7 +265,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
 
             // Check if we should give up (network probably gone/changed)
             if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
-                LREPMaster("GAVE UP: %d consecutive failures - network likely gone\r\n",
+                LREP("GAVE UP: %d consecutive failures - network likely gone\r\n",
                            network_metrics.consecutive_failures);
                 LREPMaster("Stopped automatic retries to save battery\r\n");
                 LREPMaster("Press button to manually retry joining\r\n");

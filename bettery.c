@@ -37,12 +37,9 @@ uint8 zclBattery_PercentageRemainig = 0xff;
 uint16 zclBattery_RawAdc = 0xff;
 
 uint8 getBatteryVoltageZCL(uint16 millivolts) {
-    uint8 volt8 = (uint8)(millivolts / 100);
-    if ((millivolts - (volt8 * 100)) > 50) {
-        return volt8 + 1;
-    } else {
-        return volt8;
-    }
+    // Proper rounding: add 50 before dividing by 100
+    // This ensures values like 295 round to 3, not truncate to 2
+    return (uint8)((millivolts + 50) / 100);
 }
 // return millivolts
 uint16 getBatteryVoltage(void) {
@@ -102,8 +99,10 @@ void zclBattery_Report(void) {
 
         afAddrType_t inderect_DstAddr = {.addrMode = (afAddrMode_t)AddrNotPresent, .endPoint = 0, .addr.shortAddr = 0};
         zcl_SendReportCmd(1, &inderect_DstAddr, POWER_CFG, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, TRUE, bdb_getZCLFrameCounter());
+
+        // Free memory only if allocation succeeded
+        osal_mem_free(pReportCmd);
     }
-    osal_mem_free(pReportCmd);
 #endif
 }
 

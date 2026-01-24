@@ -17,6 +17,12 @@ extern bool requestNewTrustCenterLinkKey;
 // External TX power mode from zcl_app.c
 extern uint8 zclApp_TxPowerMode;
 
+// Issue #24: Persist rejoin backoff state across power cycles
+typedef struct {
+    byte rejoinsLeft;
+    uint32 rejoinDelay;
+} RejoinBackoffState_t;
+
 byte rejoinsLeft = APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES;
 uint32 rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_START_DELAY;
 
@@ -37,6 +43,21 @@ static bool pairing_mode_active = false;
 /*********************************************************************
  * HYBRID PHASE 2: HELPER FUNCTIONS
  */
+
+/*********************************************************************
+ * @fn      zclCommissioning_SaveBackoffState
+ * @brief   Save rejoin backoff state to NV memory (Issue #24)
+ * @param   none
+ * @return  none
+ */
+static void zclCommissioning_SaveBackoffState(void) {
+    RejoinBackoffState_t state;
+    state.rejoinsLeft = rejoinsLeft;
+    state.rejoinDelay = rejoinDelay;
+
+    osal_nv_item_init(ZCD_NV_REJOIN_BACKOFF_STATE, sizeof(RejoinBackoffState_t), &state);
+    osal_nv_write(ZCD_NV_REJOIN_BACKOFF_STATE, 0, sizeof(RejoinBackoffState_t), &state);
+}
 
 /*********************************************************************
  * @fn      zclCommissioning_StartPairingMode
@@ -178,6 +199,14 @@ void zclCommissioning_Init(uint8 task_id) {
         LREP("First boot - initializing network metrics\r\n");
     }
 
+    // Issue #24: Load rejoin backoff state from NV to maintain exponential backoff across power cycles
+    RejoinBackoffState_t backoff_state;
+    if (osal_nv_read(ZCD_NV_REJOIN_BACKOFF_STATE, 0, sizeof(RejoinBackoffState_t), &backoff_state) == SUCCESS) {
+        rejoinsLeft = backoff_state.rejoinsLeft;
+        rejoinDelay = backoff_state.rejoinDelay;
+        LREP("Loaded rejoin backoff state: rejoinsLeft=%d rejoinDelay=%ld\r\n", rejoinsLeft, rejoinDelay);
+    }
+
     // Set TX power (adaptive - start low to save battery)
     ZMacSetTransmitPower(current_tx_power);
     LREP("Initial TX power: %d dBm\r\n", current_tx_power);
@@ -193,6 +222,9 @@ static void zclCommissioning_ResetBackoffRetry(void) {
     rejoinsLeft = APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES;
     rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_START_DELAY;
     quick_rejoin_attempted = false; // Reset for next time
+
+    // Issue #24: Clear saved backoff state on successful connection
+    zclCommissioning_SaveBackoffState();
 }
 
 static void zclCommissioning_OnConnect(void) {
@@ -301,6 +333,9 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                 rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_MAX_DELAY;
             }
 
+            // Issue #24: Save updated backoff state to persist across power cycles
+            zclCommissioning_SaveBackoffState();
+
             // Check if should enter deep sleep mode
             zclCommissioning_CheckDeepSleep();
 
@@ -310,6 +345,9 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                            network_metrics.consecutive_failures);
                 LREPMaster("Stopped automatic retries to save battery\r\n");
                 LREPMaster("Press button to manually retry joining\r\n");
+
+                // Issue #25: Persist give-up state to NV so device remembers after power cycle
+                osal_nv_write(ZCD_NV_NETWORK_METRICS, 0, sizeof(NetworkMetrics_t), &network_metrics);
 
                 // Turn off LED to save battery
                 HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
@@ -403,12 +441,18 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
 }
 
 static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
+    // Issue #9: Add NULL check to prevent potential crash
+    if (data == NULL) {
+        LREP("ERROR: Bind notification received with NULL data\r\n");
+        return;
+    }
+
     // Blink 2 times to indicate bind (not continuous)
     HalLedBlink(HAL_LED_1, 2, 50, 300);
     LREP("Recieved bind request clusterId=0x%X dstAddr=0x%X ep=%d\r\n", data->clusterId, data->dstAddr, data->ep);
     uint16 maxEntries = 0, usedEntries = 0;
     bindCapacity(&maxEntries, &usedEntries);
-    LREP("bindCapacity %d %usedEntries %d \r\n", maxEntries, usedEntries);
+    LREP("bindCapacity %d usedEntries %d \r\n", maxEntries, usedEntries);
 }
 
 void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {

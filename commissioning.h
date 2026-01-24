@@ -21,6 +21,7 @@
 // NV storage IDs for network metrics
 #define ZCD_NV_NETWORK_METRICS 0x0403
 #define ZCD_NV_LAST_CHANNEL 0x0404
+#define ZCD_NV_REJOIN_BACKOFF_STATE 0x0405
 
 // Note: TX_PWR_0_DBM through TX_PWR_PLUS_4 are defined in Z-Stack's ZMAC.h
 

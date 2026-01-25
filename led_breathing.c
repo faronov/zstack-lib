@@ -8,6 +8,7 @@
 
 #include "led_breathing.h"
 #include "hal_board_cfg.h"
+#include "hal_led.h"
 #include "OSAL.h"
 #include "Debug.h"
 

@@ -68,10 +68,9 @@ static void zclCommissioning_SaveBackoffState(void) {
 void zclCommissioning_StartPairingMode(void) {
     pairing_mode_active = true;
 
-    // Aqara-style: Continuous rapid LED blinking during pairing
-    // Blink 255 times with 200ms period = ~51 seconds of blinking
-    // This gives plenty of time for the pairing process to complete
-    HalLedBlink(HAL_LED_1, 255, 50, 200);
+    // Amber/breathing style: Continuous smooth LED flashing during pairing
+    // HAL_LED_MODE_FLASH provides a smoother visual effect than rapid blinking
+    HalLedSet(HAL_LED_1, HAL_LED_MODE_FLASH);
 
 #if defined(POWER_SAVING)
     // Set fast poll rate during pairing for quick response to coordinator
@@ -79,7 +78,7 @@ void zclCommissioning_StartPairingMode(void) {
     LREP("Pairing mode: Fast poll rate enabled for coordinator communication\r\n");
 #endif
 
-    LREP("Pairing mode: LED blinking rapidly (Aqara style)\r\n");
+    LREP("Pairing mode: LED flashing (amber/breathing style)\r\n");
 }
 
 /*********************************************************************

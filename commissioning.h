@@ -10,6 +10,9 @@
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_BACKOFF ((float) 1.5) // More aggressive (was 1.2)
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES 30 // Increased from 20
 
+// Interview/configuration period after successful join
+#define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)120000) // 120 seconds (2 minutes) for coordinator interview
+
 // Deep sleep mode after many failures
 #define APP_COMMISSIONING_DEEP_SLEEP_THRESHOLD 50 // After 50 consecutive failures
 #define APP_COMMISSIONING_DEEP_SLEEP_INTERVAL ((uint32)3600000) // 1 hour between retries

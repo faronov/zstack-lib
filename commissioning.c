@@ -73,6 +73,12 @@ void zclCommissioning_StartPairingMode(void) {
     // This gives plenty of time for the pairing process to complete
     HalLedBlink(HAL_LED_1, 255, 50, 200);
 
+#if defined(POWER_SAVING)
+    // Set fast poll rate during pairing for quick response to coordinator
+    NLME_SetPollRate(QUEUED_POLL_RATE); // 100ms - fast polling during pairing
+    LREP("Pairing mode: Fast poll rate enabled for coordinator communication\r\n");
+#endif
+
     LREP("Pairing mode: LED blinking rapidly (Aqara style)\r\n");
 }
 
@@ -239,7 +245,11 @@ static void zclCommissioning_OnConnect(void) {
     zclCommissioning_AdaptiveTxPower(false);
 
     zclCommissioning_ResetBackoffRetry();
-    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, 10 * 1000);
+
+    // Stay awake for 2 minutes to allow coordinator to complete interview/configuration
+    // (endpoint discovery, attribute reads, binding, reporting configuration)
+    LREP("Staying awake for %d seconds for coordinator interview\r\n", APP_COMMISSIONING_INTERVIEW_PERIOD / 1000);
+    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, APP_COMMISSIONING_INTERVIEW_PERIOD);
 }
 
 static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_t *bdbCommissioningModeMsg) {

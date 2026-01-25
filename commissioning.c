@@ -8,7 +8,6 @@
 #include "nwk_globals.h"
 #include "zcl_app.h"  // For TX power mode access
 #include "ZMAC.h"     // For TX_PWR constants
-#include "led_breathing.h"  // Aqara-style LED breathing effect
 
 static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_t *bdbCommissioningModeMsg);
 static void zclCommissioning_ResetBackoffRetry(void);
@@ -62,15 +61,15 @@ static void zclCommissioning_SaveBackoffState(void) {
 
 /*********************************************************************
  * @fn      zclCommissioning_StartPairingMode
- * @brief   Start Aqara-style pairing mode with continuous rapid LED blinking
+ * @brief   Start pairing mode with fast LED blinking
  * @param   none
  * @return  none
  */
 void zclCommissioning_StartPairingMode(void) {
     pairing_mode_active = true;
 
-    // Aqara-style: Real LED breathing effect (smooth fade in/out)
-    led_breathing_start();
+    // Fast continuous blink during pairing: 50% duty cycle, 200ms period
+    HalLedBlink(HAL_LED_1, 0, 50, 200);
 
 #if defined(POWER_SAVING)
     // Set fast poll rate during pairing for quick response to coordinator
@@ -78,7 +77,7 @@ void zclCommissioning_StartPairingMode(void) {
     LREP("Pairing mode: Fast poll rate enabled for coordinator communication\r\n");
 #endif
 
-    LREP("Pairing mode: LED breathing (Aqara-style smooth fade)\r\n");
+    LREP("Pairing mode: Fast LED blinks\r\n");
 }
 
 /*********************************************************************
@@ -185,9 +184,6 @@ static void zclCommissioning_CheckDeepSleep(void) {
 void zclCommissioning_Init(uint8 task_id) {
     zclCommissioning_TaskId = task_id;
 
-    // Initialize LED breathing module (Aqara-style smooth fade effect)
-    led_breathing_init(task_id);
-
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
 
@@ -277,13 +273,13 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
     case BDB_COMMISSIONING_NWK_STEERING:
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_SUCCESS:
-            // Aqara-style: Stop breathing, show success pattern
+            // Stop fast blinking, show success pattern
             if (pairing_mode_active) {
-                led_breathing_stop(); // Stop smooth breathing effect
-                // Success: 3 slow blinks (Aqara/lumi.sens style)
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
+                // Success: 3 slow blinks
                 HalLedBlink(HAL_LED_1, 3, 50, 1000);
                 pairing_mode_active = false;
-                LREP("Pairing SUCCESS: 3 slow blinks (Aqara/lumi.sens style)\r\n");
+                LREP("Pairing SUCCESS: 3 slow blinks\r\n");
             } else {
                 // Automatic rejoin success (not user-initiated) - silent
                 LREP("Rejoin success (silent)\r\n");
@@ -293,13 +289,12 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             break;
 
         default:
-            // Aqara/lumi.sens style: Stop breathing immediately on failure (LED off)
+            // Stop fast blinking on failure (LED off)
             if (pairing_mode_active) {
-                led_breathing_stop(); // Stop breathing, LED turns off
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
                 pairing_mode_active = false;
-                LREP("Pairing FAILED: LED off immediately (Aqara/lumi.sens style)\r\n");
+                LREP("Pairing FAILED: LED off immediately\r\n");
             }
-            // Note: Aqara sensors don't blink on failure, they just turn LED off
             LREP("Network join failed - press button to retry\r\n");
             break;
         }
@@ -357,10 +352,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                 // Issue #25: Persist give-up state to NV so device remembers after power cycle
                 osal_nv_write(ZCD_NV_NETWORK_METRICS, 0, sizeof(NetworkMetrics_t), &network_metrics);
 
-                // Stop breathing and turn off LED to save battery
-                if (led_breathing_is_active()) {
-                    led_breathing_stop();
-                }
+                // Turn off LED to save battery
                 HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
 
                 // Don't schedule another rejoin - wait for button press
@@ -394,10 +386,7 @@ void zclCommissioning_Sleep(uint8 allow) {
     if (allow) {
         NLME_SetPollRate(0);
 
-        // Stop LED breathing if active and turn off LED to save battery
-        if (led_breathing_is_active()) {
-            led_breathing_stop();
-        }
+        // Turn off LED to save battery
         HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
 
         LREP("Entering sleep mode - LED off\r\n");
@@ -454,11 +443,6 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         LREPMaster("APP_CLOCK_DOWN_POLING_RATE_EVT\r\n");
         zclCommissioning_Sleep(true);
         return (events ^ APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
-    }
-
-    // LED breathing effect events (Aqara-style smooth fade)
-    if (events & LED_BREATHING_EVT) {
-        return led_breathing_event_loop(task_id, events);
     }
 
     // Discard unknown events

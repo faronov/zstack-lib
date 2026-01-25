@@ -392,6 +392,9 @@ void zclCommissioning_Sleep(uint8 allow) {
 #if defined(POWER_SAVING)
     if (allow) {
         NLME_SetPollRate(0);
+        // Turn off LED when entering sleep mode to save battery
+        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+        LREP("Entering sleep mode - LED off\r\n");
     } else {
         NLME_SetPollRate(POLL_RATE);
     }
@@ -409,8 +412,9 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
                 zclApp_NwkState = (devStates_t)(MSGpkt->hdr.status);
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
-                    // Connected - turn off LED to save battery
-                    HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                    // Connected - LED will be turned off after interview period
+                    // Don't turn it off here to avoid interfering with success pattern
+                    LREP("Device connected (state=DEV_END_DEVICE)\r\n");
                 } else {
                     // State change - blink twice (not continuous)
                     HalLedBlink(HAL_LED_1, 2, 50, 300);

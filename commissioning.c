@@ -317,8 +317,8 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             break;
 
         default:
-            // Blink 2 times to indicate rejoin attempt (not continuous)
-            HalLedBlink(HAL_LED_1, 2, 50, 300);
+            // Removed LED blink on rejoin failure - can be very frequent if network unstable
+            // LED will blink on final failure (give-up) or deep sleep mode instead
 
             // Update failure metrics
             network_metrics.rejoin_attempts++;
@@ -415,8 +415,8 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
                     // Don't turn it off here to avoid interfering with success pattern
                     LREP("Device connected (state=DEV_END_DEVICE)\r\n");
                 } else {
-                    // State change - blink twice (not continuous)
-                    HalLedBlink(HAL_LED_1, 2, 50, 300);
+                    // State change - no LED feedback needed for intermediate states
+                    LREP("State change: %d\r\n", zclApp_NwkState);
                 }
                 break;
 

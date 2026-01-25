@@ -16,6 +16,14 @@ static uint8 zclFactoryResetter_TaskID;
 
 uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
     LREP("zclFactoryResetter_loop 0x%X\r\n", events);
+
+    if (events & FACTORY_RESET_HOLD_WARNING_EVT) {
+        // User has held button for 1+ second - show continuous blink as warning
+        LREPMaster("FACTORY_RESET_HOLD_WARNING: Starting LED feedback\r\n");
+        HalLedBlink(HAL_LED_1, 0, 50, 300);  // Continuous blink: 50% duty, 300ms period
+        return (events ^ FACTORY_RESET_HOLD_WARNING_EVT);
+    }
+
     if (events & FACTORY_RESET_EVT) {
         LREPMaster("FACTORY_RESET_EVT\r\n");
         zclFactoryResetter_ResetToFN();
@@ -48,7 +56,8 @@ void zclFactoryResetter_Init(uint8 task_id) {
 }
 
 void zclFactoryResetter_ResetToFN(void) {
-    HalLedSet(HAL_LED_1, HAL_LED_MODE_FLASH);
+    // LED already blinking from warning event - will continue until device resets
+    // After reset, commissioning.c will control LED for pairing mode (fast blinks)
     LREP("bdbAttributes.bdbNodeIsOnANetwork=%d bdbAttributes.bdbCommissioningMode=0x%X\r\n", bdbAttributes.bdbNodeIsOnANetwork, bdbAttributes.bdbCommissioningMode);
     LREPMaster("zclFactoryResetter: Reset to FN\r\n");
     bdb_resetLocalAction();
@@ -59,6 +68,8 @@ void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode) {
     if (portAndAction & HAL_KEY_RELEASE) {
         LREPMaster("zclFactoryResetter: Key release\r\n");
         osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_EVT);
+        osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT);
+        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);  // Stop LED feedback if released early
     } else {
         LREPMaster("zclFactoryResetter: Key press\r\n");
         bool statTimer = true;
@@ -68,6 +79,11 @@ void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode) {
         LREP("zclFactoryResetter statTimer hold timer %d\r\n", statTimer);
         if (statTimer) {
             uint32 timeout = bdbAttributes.bdbNodeIsOnANetwork ? FACTORY_RESET_HOLD_TIME_LONG : FACTORY_RESET_HOLD_TIME_FAST;
+
+            // Start warning LED feedback after 1 second of holding
+            osal_start_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT, 1000);
+
+            // Start actual factory reset timer (3 seconds)
             osal_start_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_EVT, timeout);
         }
     }

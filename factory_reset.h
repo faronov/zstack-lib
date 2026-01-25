@@ -3,6 +3,7 @@
 
 #define FACTORY_RESET_EVT 0x1000
 #define FACTORY_BOOTCOUNTER_RESET_EVT 0x2000
+#define FACTORY_RESET_HOLD_WARNING_EVT 0x4000  // Visual feedback during button hold
 
 #ifndef FACTORY_RESET_HOLD_TIME_LONG
     #define FACTORY_RESET_HOLD_TIME_LONG ((uint32)10 * 1000)

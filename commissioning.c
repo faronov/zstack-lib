@@ -67,6 +67,9 @@ static void zclCommissioning_SaveBackoffState(void) {
  */
 void zclCommissioning_StartPairingMode(void) {
     pairing_mode_active = true;
+    // Cancel any pending poll-rate changes to keep device responsive during pairing
+    osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
+    osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT);
 
     // Fast continuous blink during pairing: 50% duty cycle, 200ms period
     HalLedBlink(HAL_LED_1, 0, 50, 200);
@@ -234,6 +237,10 @@ static void zclCommissioning_ResetBackoffRetry(void) {
 
 static void zclCommissioning_OnConnect(void) {
     LREPMaster("[OK] zclCommissioning_OnConnect\r\n");
+
+    // Cancel any pending poll-rate changes from button presses
+    osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT);
+    osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
 
     // Update metrics - successful connection!
     network_metrics.rejoin_successes++;
@@ -448,6 +455,12 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     }
 
+    if (events & APP_COMMISSIONING_POLL_NORMAL_EVT) {
+        LREPMaster("APP_POLL_NORMAL_EVT\r\n");
+        zclCommissioning_Sleep(false);
+        return (events ^ APP_COMMISSIONING_POLL_NORMAL_EVT);
+    }
+
     if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
         if (pairing_mode_active) {
             pairing_mode_active = false;
@@ -500,8 +513,8 @@ void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
         #if defined(POWER_SAVING)
             // Fast poll for button responsiveness
             NLME_SetPollRate(1);
-            // Revert to normal rate after 3 seconds to save battery
-            osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, 3000);
+            // Revert to normal poll rate after 3 seconds
+            osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT, 3000);
         #endif
     }
 }

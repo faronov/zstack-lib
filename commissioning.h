@@ -3,6 +3,7 @@
 
 #define APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT  0x0001
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_EVT       0x0002
+#define APP_COMMISSIONING_PAIRING_TIMEOUT_EVT         0x0004
 
 // Enhanced rejoin strategy (Hybrid Phase 2)
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_MAX_DELAY ((uint32)900000) // 15 minutes (reduced from 30 for battery)
@@ -12,6 +13,7 @@
 
 // Interview/configuration period after successful join
 #define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)120000) // 120 seconds (2 minutes) for coordinator interview
+#define APP_COMMISSIONING_PAIRING_TIMEOUT ((uint32)300000)  // 5 minutes max fast-blink pairing window
 
 // Deep sleep mode after many failures
 #define APP_COMMISSIONING_DEEP_SLEEP_THRESHOLD 50 // After 50 consecutive failures

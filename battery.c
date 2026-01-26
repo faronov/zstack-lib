@@ -110,9 +110,7 @@ uint8 zclBattery_TaskId = 0;
 
 void zclBattery_Init(uint8 task_id) {
     zclBattery_TaskId = task_id;
-#if BDB_REPORTING
-    osal_start_reload_timer(zclBattery_TaskId, ZCL_BATTERY_REPORT_EVT, ZCL_BATTERY_REPORT_INTERVAL);
-#endif
+    // Battery reporting is handled by the main sensor cycle to avoid duplicate sampling.
 }
 
 uint16 zclBattery_event_loop(uint8 task_id, uint16 events) {

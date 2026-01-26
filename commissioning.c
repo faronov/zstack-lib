@@ -78,6 +78,7 @@ void zclCommissioning_StartPairingMode(void) {
 #endif
 
     LREP("Pairing mode: Fast LED blinks\r\n");
+    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT, APP_COMMISSIONING_PAIRING_TIMEOUT);
 }
 
 /*********************************************************************
@@ -275,6 +276,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
         case BDB_COMMISSIONING_SUCCESS:
             // Stop fast blinking, show success pattern
             if (pairing_mode_active) {
+                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
                 HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
                 // Success: 3 slow blinks
                 HalLedBlink(HAL_LED_1, 3, 50, 1000);
@@ -291,6 +293,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
         default:
             // Stop fast blinking on failure (LED off)
             if (pairing_mode_active) {
+                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
                 HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
                 pairing_mode_active = false;
                 LREP("Pairing FAILED: LED off immediately\r\n");
@@ -443,6 +446,18 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         LREPMaster("APP_CLOCK_DOWN_POLING_RATE_EVT\r\n");
         zclCommissioning_Sleep(true);
         return (events ^ APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
+    }
+
+    if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
+        if (pairing_mode_active) {
+            pairing_mode_active = false;
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+#if defined(POWER_SAVING)
+            NLME_SetPollRate(POLL_RATE);
+#endif
+            LREPMaster("Pairing timeout: LED off, normal poll rate\r\n");
+        }
+        return (events ^ APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
     }
 
     // Discard unknown events

@@ -69,16 +69,7 @@ uint8 getBatteryRemainingPercentageZCLCR2032(uint16 volt16) {
     return (uint8)(battery_level * 2);
 }
 
-void zclBattery_Report(void) {
-    uint16 millivolts = getBatteryVoltage();
-    zclBattery_Voltage = getBatteryVoltageZCL(millivolts);
-    zclBattery_PercentageRemainig = ZCL_BATTERY_REPORT_REPORT_CONVERTER(millivolts);
-
-    LREP("Battery voltageZCL=%d prc=%d voltage=%d\r\n", zclBattery_Voltage, zclBattery_PercentageRemainig, millivolts);
-
-#if BDB_REPORTING
-    bdb_RepChangedAttrValue(1, POWER_CFG, ATTRID_POWER_CFG_BATTERY_PERCENTAGE_REMAINING);
-#else
+static void zclBattery_SendReportDirect(void) {
     const uint8 NUM_ATTRIBUTES = 3;
     zclReportCmd_t *pReportCmd;
     pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
@@ -103,7 +94,30 @@ void zclBattery_Report(void) {
         // Free memory only if allocation succeeded
         osal_mem_free(pReportCmd);
     }
+}
+
+void zclBattery_Report(void) {
+    uint16 millivolts = getBatteryVoltage();
+    zclBattery_Voltage = getBatteryVoltageZCL(millivolts);
+    zclBattery_PercentageRemainig = ZCL_BATTERY_REPORT_REPORT_CONVERTER(millivolts);
+
+    LREP("Battery voltageZCL=%d prc=%d voltage=%d\r\n", zclBattery_Voltage, zclBattery_PercentageRemainig, millivolts);
+
+#if BDB_REPORTING
+    bdb_RepChangedAttrValue(1, POWER_CFG, ATTRID_POWER_CFG_BATTERY_PERCENTAGE_REMAINING);
+#else
+    zclBattery_SendReportDirect();
 #endif
+}
+
+void zclBattery_ReportNow(void) {
+    // Use the latest sampled values if available; otherwise sample now
+    if (zclBattery_RawAdc == 0xff) {
+        uint16 millivolts = getBatteryVoltage();
+        zclBattery_Voltage = getBatteryVoltageZCL(millivolts);
+        zclBattery_PercentageRemainig = ZCL_BATTERY_REPORT_REPORT_CONVERTER(millivolts);
+    }
+    zclBattery_SendReportDirect();
 }
 
 uint8 zclBattery_TaskId = 0;

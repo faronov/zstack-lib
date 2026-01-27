@@ -18,4 +18,6 @@ extern void zclBattery_Init(uint8 task_id);
 extern uint16 zclBattery_event_loop(uint8 task_id, uint16 events);
 extern void zclBattery_HandleKeys(uint8 portAndAction, uint8 keyCode);
 extern void zclBattery_Report(void);
+// Send immediate report (bypasses BDB reporting throttling)
+extern void zclBattery_ReportNow(void);
 #endif

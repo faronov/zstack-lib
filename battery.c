@@ -98,7 +98,7 @@ void zclBattery_Report(void) {
         pReportCmd->attrList[2].attrData = (void *)(&zclBattery_RawAdc);
 
         afAddrType_t inderect_DstAddr = {.addrMode = (afAddrMode_t)AddrNotPresent, .endPoint = 0, .addr.shortAddr = 0};
-        zcl_SendReportCmd(1, &inderect_DstAddr, POWER_CFG, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, TRUE, bdb_getZCLFrameCounter());
+        zcl_SendReportCmd(1, &inderect_DstAddr, POWER_CFG, pReportCmd, ZCL_FRAME_SERVER_CLIENT_DIR, TRUE, bdb_getZCLFrameCounter());
 
         // Free memory only if allocation succeeded
         osal_mem_free(pReportCmd);

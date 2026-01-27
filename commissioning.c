@@ -484,8 +484,7 @@ static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
         return;
     }
 
-    // Blink 2 times to indicate bind (not continuous)
-    HalLedBlink(HAL_LED_1, 2, 50, 300);
+    // No LED blink on bind to avoid conflicting patterns during pairing/reset
     LREP("Recieved bind request clusterId=0x%X dstAddr=0x%X ep=%d\r\n", data->clusterId, data->dstAddr, data->ep);
     uint16 maxEntries = 0, usedEntries = 0;
     bindCapacity(&maxEntries, &usedEntries);

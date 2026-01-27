@@ -7,6 +7,7 @@
 #include "hal_led.h"
 #include "ZComDef.h"
 #include "hal_key.h"
+#include "commissioning.h"
 
 static void zclFactoryResetter_ResetToFN(void);
 static void zclFactoryResetter_ProcessBootCounter(void);
@@ -60,6 +61,8 @@ void zclFactoryResetter_ResetToFN(void) {
     // After reset, commissioning.c will control LED for pairing mode (fast blinks)
     LREP("bdbAttributes.bdbNodeIsOnANetwork=%d bdbAttributes.bdbCommissioningMode=0x%X\r\n", bdbAttributes.bdbNodeIsOnANetwork, bdbAttributes.bdbCommissioningMode);
     LREPMaster("zclFactoryResetter: Reset to FN\r\n");
+    // Clear commissioning backoff/metrics so device immediately rejoins after reset
+    zclCommissioning_ResetState();
     bdb_resetLocalAction();
 }
 

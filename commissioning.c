@@ -1,5 +1,6 @@
 #include "commissioning.h"
 #include "Debug.h"
+#include "OSAL.h"
 #include "OSAL_PwrMgr.h"
 #include "ZDApp.h"
 #include "bdb_interface.h"
@@ -82,6 +83,28 @@ void zclCommissioning_StartPairingMode(void) {
 
     LREP("Pairing mode: Fast LED blinks\r\n");
     osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT, APP_COMMISSIONING_PAIRING_TIMEOUT);
+}
+
+void zclCommissioning_ResetState(void) {
+    // Reset metrics and backoff state to allow immediate rejoin after factory reset
+    osal_memset(&network_metrics, 0, sizeof(NetworkMetrics_t));
+    osal_nv_item_init(ZCD_NV_NETWORK_METRICS, sizeof(NetworkMetrics_t), &network_metrics);
+    osal_nv_write(ZCD_NV_NETWORK_METRICS, 0, sizeof(NetworkMetrics_t), &network_metrics);
+
+    uint8 last_channel = 0;
+    osal_nv_item_init(ZCD_NV_LAST_CHANNEL, 1, &last_channel);
+    osal_nv_write(ZCD_NV_LAST_CHANNEL, 0, 1, &last_channel);
+
+    RejoinBackoffState_t state;
+    state.rejoinsLeft = APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES;
+    state.rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_START_DELAY;
+    osal_nv_item_init(ZCD_NV_REJOIN_BACKOFF_STATE, sizeof(RejoinBackoffState_t), &state);
+    osal_nv_write(ZCD_NV_REJOIN_BACKOFF_STATE, 0, sizeof(RejoinBackoffState_t), &state);
+
+    // Reset in-memory backoff as well
+    rejoinsLeft = APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES;
+    rejoinDelay = APP_COMMISSIONING_END_DEVICE_REJOIN_START_DELAY;
+    quick_rejoin_attempted = false;
 }
 
 /*********************************************************************

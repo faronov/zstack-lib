@@ -13,7 +13,7 @@
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES 30 // Increased from 20
 
 // Interview/configuration period after successful join
-#define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)120000) // 120 seconds (2 minutes) for coordinator interview
+#define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)300000) // 300 seconds (5 minutes) for coordinator interview
 #define APP_COMMISSIONING_PAIRING_TIMEOUT ((uint32)300000)  // 5 minutes max fast-blink pairing window
 
 // Deep sleep mode after many failures

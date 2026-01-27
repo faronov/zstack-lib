@@ -417,12 +417,13 @@ void zclCommissioning_Sleep(uint8 allow) {
     LREP("zclCommissioning_Sleep %d\r\n", allow);
 #if defined(POWER_SAVING)
     if (allow) {
-        NLME_SetPollRate(0);
+        // Keep a normal poll rate so configuration/commands can still be received
+        NLME_SetPollRate(POLL_RATE);
 
         // Turn off LED to save battery
         HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
 
-        LREP("Entering sleep mode - LED off\r\n");
+        LREP("Entering low poll mode - LED off\r\n");
     } else {
         NLME_SetPollRate(POLL_RATE);
     }

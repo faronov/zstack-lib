@@ -275,8 +275,15 @@ static void zclCommissioning_OnConnect(void) {
 
     zclCommissioning_ResetBackoffRetry();
 
+    // Fast poll during interview so coordinator can configure reporting/bindings quickly
+#if defined(POWER_SAVING)
+    NLME_SetPollRate(QUEUED_POLL_RATE);
+    LREP("Fast poll (%dms) for interview\r\n", QUEUED_POLL_RATE);
+#endif
+
     // Stay awake for 2 minutes to allow coordinator to complete interview/configuration
     // (endpoint discovery, attribute reads, binding, reporting configuration)
+    // After this period, poll rate reverts to normal via CLOCK_DOWN_POLING_RATE_EVT
     LREP("Staying awake for %d seconds for coordinator interview\r\n", APP_COMMISSIONING_INTERVIEW_PERIOD / 1000);
     osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, APP_COMMISSIONING_INTERVIEW_PERIOD);
 }

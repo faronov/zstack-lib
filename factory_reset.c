@@ -14,6 +14,7 @@ static void zclFactoryResetter_ProcessBootCounter(void);
 static void zclFactoryResetter_ResetBootCounter(void);
 
 static uint8 zclFactoryResetter_TaskID;
+static bool zclFactoryResetter_WarningActive = false;
 
 uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
     LREP("zclFactoryResetter_loop 0x%X\r\n", events);
@@ -21,6 +22,7 @@ uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
     if (events & FACTORY_RESET_HOLD_WARNING_EVT) {
         // User has held button for 1+ second - show continuous fast blink as warning
         LREPMaster("FACTORY_RESET_HOLD_WARNING: Starting LED feedback\r\n");
+        zclFactoryResetter_WarningActive = true;
         HalLedBlink(HAL_LED_1, 0, 50, 200);  // Continuous blink: 50% duty, 200ms period
         return (events ^ FACTORY_RESET_HOLD_WARNING_EVT);
     }
@@ -72,7 +74,10 @@ void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode) {
         LREPMaster("zclFactoryResetter: Key release\r\n");
         osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_EVT);
         osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT);
-        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);  // Stop LED feedback if released early
+        if (zclFactoryResetter_WarningActive) {
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);  // Stop LED feedback only if warning was active
+            zclFactoryResetter_WarningActive = false;
+        }
     } else {
         LREPMaster("zclFactoryResetter: Key press\r\n");
         bool statTimer = true;

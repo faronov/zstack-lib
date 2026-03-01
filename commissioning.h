@@ -5,6 +5,7 @@
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_EVT       0x0002
 #define APP_COMMISSIONING_PAIRING_TIMEOUT_EVT         0x0004
 #define APP_COMMISSIONING_POLL_NORMAL_EVT             0x0008
+#define APP_COMMISSIONING_LED_SLOWDOWN_EVT            0x0010
 
 // Enhanced rejoin strategy (Hybrid Phase 2)
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_MAX_DELAY ((uint32)900000) // 15 minutes (reduced from 30 for battery)

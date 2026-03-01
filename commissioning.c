@@ -37,6 +37,9 @@ static bool quick_rejoin_attempted = false;
 // Aqara-style LED behavior: track if we're in user-initiated pairing mode
 static bool pairing_mode_active = false;
 
+// Boot-time join retry: keep retrying every 30s during the 5-minute pairing window
+#define APP_COMMISSIONING_JOIN_RETRY_INTERVAL ((uint32)30000)  // 30 seconds between join attempts
+
 #ifndef APP_TX_POWER
     #define APP_TX_POWER 4  // TX_PWR_PLUS_4 (+4 dBm)
 #endif
@@ -82,6 +85,8 @@ void zclCommissioning_StartPairingMode(void) {
 #endif
 
     LREP("Pairing mode: Fast LED blinks\r\n");
+    // Slow down LED after 30s to save battery
+    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT, 30000);
     osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT, APP_COMMISSIONING_PAIRING_TIMEOUT);
 }
 
@@ -314,7 +319,9 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             // Stop fast blinking, show success pattern
             if (pairing_mode_active) {
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
+                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
+                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop blinks
                 // Success: 3 slow blinks
                 HalLedBlink(HAL_LED_1, 3, 50, 1000);
                 pairing_mode_active = false;
@@ -328,14 +335,16 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
             break;
 
         default:
-            // Stop fast blinking on failure (LED off)
             if (pairing_mode_active) {
-                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop fast blinks
-                pairing_mode_active = false;
-                LREP("Pairing FAILED: LED off immediately\r\n");
+                // Still in pairing window — schedule retry, keep LED blinking
+                LREP("Join failed - retrying in %d seconds\r\n",
+                     (int)(APP_COMMISSIONING_JOIN_RETRY_INTERVAL / 1000));
+                osal_start_timerEx(zclCommissioning_TaskId,
+                                   APP_COMMISSIONING_END_DEVICE_REJOIN_EVT,
+                                   APP_COMMISSIONING_JOIN_RETRY_INTERVAL);
+            } else {
+                LREP("Network join failed - press button to retry\r\n");
             }
-            LREP("Network join failed - press button to retry\r\n");
             break;
         }
 
@@ -475,7 +484,14 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
     if (events & APP_COMMISSIONING_END_DEVICE_REJOIN_EVT) {
         LREPMaster("APP_END_DEVICE_REJOIN_EVT\r\n");
 #if ZG_BUILD_ENDDEVICE_TYPE
-        bdb_ZedAttemptRecoverNwk();
+        if (pairing_mode_active) {
+            // Initial join retry — try fresh commissioning
+            LREP("Pairing retry attempt\r\n");
+            bdb_StartCommissioning(BDB_COMMISSIONING_MODE_NWK_STEERING | BDB_COMMISSIONING_MODE_FINDING_BINDING);
+        } else {
+            // Parent lost rejoin — recover existing network
+            bdb_ZedAttemptRecoverNwk();
+        }
 #endif
         return (events ^ APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
     }
@@ -492,9 +508,20 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_POLL_NORMAL_EVT);
     }
 
+    if (events & APP_COMMISSIONING_LED_SLOWDOWN_EVT) {
+        if (pairing_mode_active) {
+            // Switch from fast blink (200ms) to slow blink (2s) to save battery
+            HalLedBlink(HAL_LED_1, 0, 50, 2000);
+            LREPMaster("Pairing: LED slowed down (battery save)\r\n");
+        }
+        return (events ^ APP_COMMISSIONING_LED_SLOWDOWN_EVT);
+    }
+
     if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
         if (pairing_mode_active) {
             pairing_mode_active = false;
+            osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
+            osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
             HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
 #if defined(POWER_SAVING)
             NLME_SetPollRate(POLL_RATE);

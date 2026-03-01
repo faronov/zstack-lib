@@ -199,7 +199,7 @@ int16 readTemperature(void) {
         if (temp1 == 0xff && temp2 == 0xff) {
             // No sensor found.
             ds18b20_GroudPins();
-            return 1;
+            return (int16)0x8000;
         }
         if (temp1 == 0x50 && temp2 == 0x05) {
             // Power-up State, not ready yet
@@ -212,5 +212,5 @@ int16 readTemperature(void) {
     }
 
     ds18b20_GroudPins();
-    return 1;
+    return (int16)0x8000;
 }

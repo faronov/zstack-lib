@@ -251,6 +251,8 @@ void zclCommissioning_Init(uint8 task_id) {
     // to make this work, coordinator should be compiled with this flag #define TP2_LEGACY_ZC
     requestNewTrustCenterLinkKey = FALSE;
 
+    // Enable auto-retry on boot so device keeps trying to join without requiring button press
+    pairing_mode_active = true;
     bdb_StartCommissioning(BDB_COMMISSIONING_MODE_NWK_STEERING | BDB_COMMISSIONING_MODE_FINDING_BINDING);
 }
 

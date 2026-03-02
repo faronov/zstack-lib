@@ -35,6 +35,9 @@ static void ds18b20_GroudPins(void);
 void ds18b20_setResolution(uint8 resolution);
 static int16 ds18b20_convertTemperature(uint8 temp1, uint8 temp2, uint8 resolution);
 
+// Track last-set resolution for use during conversion
+static uint8 ds18b20_current_resolution = DS18B20_RESOLUTION;
+
 static void _delay_us(uint16 microSecs) {
     while (microSecs--)
     {
@@ -131,6 +134,7 @@ static void ds18b20_GroudPins(void) {
 }
 
 void ds18b20_setResolution(uint8 resolution) {
+    ds18b20_current_resolution = resolution;
     ds18b20_Reset();
     ds18b20_send_byte(DS18B20_SKIP_ROM);
     ds18b20_send_byte(DS18B20_WRITE_SCRATCHPAD);
@@ -141,7 +145,6 @@ void ds18b20_setResolution(uint8 resolution) {
     ds18b20_Reset();
 }
 static int16 ds18b20_convertTemperature(uint8 temp1, uint8 temp2, uint8 resolution) {
-    float temperature = 0;
     uint8 ignoreMask = 0;
     switch (resolution) {
     case DS18B20_TEMP_9_BIT:
@@ -157,31 +160,23 @@ static int16 ds18b20_convertTemperature(uint8 temp1, uint8 temp2, uint8 resoluti
         break;
 
     case DS18B20_TEMP_12_BIT:
+    default:
         ignoreMask = 0;
         break;
-
-    default:
-        break;
     }
-    temperature = (uint16)temp1 | (uint16)(ignoreMask ? temp2 & ignoreMask : temp2) << 8;
-    // neg. temp
-    if (temp2 & (BV(3))) {
-        temperature = temperature / 16.0 - 128.0;
-    }
-    // pos. temp
-    else {
-        temperature = temperature / 16.0;
-    }
-    return (int16)(temperature * 100);
+    // Mask undefined LSB bits, reconstruct signed 16-bit raw value
+    int16 raw = (int16)((uint16)(temp2 << 8) | (temp1 & ~ignoreMask));
+    // raw is in 1/16°C units; convert to centidegrees (°C × 100)
+    return (int16)((int32)raw * 100 / 16);
 }
 
 int16 readTemperature(void) {
     // WARNING: This function BLOCKS for up to 900ms (3 retries × 300ms)
     // during temperature conversion. This may cause Zigbee message loss.
     // Keep DS18B20 reads infrequent to minimize network impact.
+    // Resolution must be set by caller before invoking (e.g. ds18b20_setResolution).
 
     uint8 temp1, temp2, retry_count = DS18B20_RETRY_COUNT;
-    ds18b20_setResolution(DS18B20_RESOLUTION);
     ds18b20_Reset();
 
     ds18b20_send_byte(DS18B20_SKIP_ROM);
@@ -208,7 +203,7 @@ int16 readTemperature(void) {
         }
 
         ds18b20_GroudPins();
-        return ds18b20_convertTemperature(temp1, temp2, DS18B20_RESOLUTION);
+        return ds18b20_convertTemperature(temp1, temp2, ds18b20_current_resolution);
     }
 
     ds18b20_GroudPins();

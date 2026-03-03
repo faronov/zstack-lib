@@ -146,9 +146,8 @@ static void zclCommissioning_AdaptiveTxPower(bool increase) {
  * @return  none
  */
 static void zclCommissioning_UpdateNetworkQuality(void) {
-    // Get parent LQI from network layer
-    // Note: NLME_GetLinkQuality() not available in Z-Stack 3.0.2, set to 0
-    network_metrics.parent_lqi = 0;
+    // parent_lqi is updated by ZCL plugin callback (zclApp_LqiCapturePlugin)
+    // on incoming cluster-specific messages — don't reset it here
 
     // Save current channel
     network_metrics.last_channel = _NIB.nwkLogicalChannel;

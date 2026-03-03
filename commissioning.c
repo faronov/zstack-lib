@@ -6,6 +6,7 @@
 #include "bdb_interface.h"
 #include "hal_key.h"
 #include "hal_led.h"
+#include "led_breathing.h"
 #include "nwk_globals.h"
 #include "zcl_app.h"  // For TX power mode access
 #include "ZMAC.h"     // For TX_PWR constants
@@ -75,8 +76,8 @@ void zclCommissioning_StartPairingMode(void) {
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT);
 
-    // Fast continuous blink during pairing: 50% duty cycle, 200ms period
-    HalLedBlink(HAL_LED_1, 0, 50, 200);
+    // Slow breathing LED during pairing
+    led_breathing_start();
 
 #if defined(POWER_SAVING)
     // Set fast poll rate during pairing for quick response to coordinator
@@ -320,7 +321,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF); // Stop blinks
+                led_breathing_stop();
                 // Success: 3 slow blinks
                 HalLedBlink(HAL_LED_1, 3, 50, 1000);
                 pairing_mode_active = false;
@@ -400,8 +401,7 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                 // Issue #25: Persist give-up state to NV so device remembers after power cycle
                 osal_nv_write(ZCD_NV_NETWORK_METRICS, 0, sizeof(NetworkMetrics_t), &network_metrics);
 
-                // Turn off LED to save battery
-                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                led_breathing_stop();
 
                 // Don't schedule another rejoin - wait for button press
                 break;
@@ -435,8 +435,8 @@ void zclCommissioning_Sleep(uint8 allow) {
         // Keep a normal poll rate so configuration/commands can still be received
         NLME_SetPollRate(POLL_RATE);
 
-        // Turn off LED to save battery
-        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+        // Turn off LED / stop breathing
+        led_breathing_stop();
 
         LREP("Entering low poll mode - LED off\r\n");
     } else {
@@ -508,11 +508,7 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
     }
 
     if (events & APP_COMMISSIONING_LED_SLOWDOWN_EVT) {
-        if (pairing_mode_active) {
-            // Switch from fast blink (200ms) to slow blink (2s) to save battery
-            HalLedBlink(HAL_LED_1, 0, 50, 2000);
-            LREPMaster("Pairing: LED slowed down (battery save)\r\n");
-        }
+        // No-op: breathing effect is already battery-efficient
         return (events ^ APP_COMMISSIONING_LED_SLOWDOWN_EVT);
     }
 
@@ -521,7 +517,7 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
             pairing_mode_active = false;
             osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
             osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+            led_breathing_stop();
 #if defined(POWER_SAVING)
             NLME_SetPollRate(POLL_RATE);
 #endif

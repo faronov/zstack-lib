@@ -216,6 +216,8 @@ static void zclCommissioning_CheckDeepSleep(void) {
 void zclCommissioning_Init(uint8 task_id) {
     zclCommissioning_TaskId = task_id;
 
+    led_breathing_init(task_id);
+
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
 
@@ -526,6 +528,11 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
     }
 
+    // Dispatch LED breathing events (runs on this task)
+    if (events & LED_BREATHING_EVT) {
+        return led_breathing_event_loop(task_id, events);
+    }
+
     // Discard unknown events
     return 0;
 }
@@ -547,7 +554,9 @@ static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
 void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
     if (portAndAction & HAL_KEY_PRESS) {
 #if ZG_BUILD_ENDDEVICE_TYPE
-        if (devState == DEV_NWK_ORPHAN) {
+        // Attempt network recovery in any disconnected state (not just ORPHAN)
+        // This handles: DEV_NWK_ORPHAN, DEV_HOLD, DEV_INIT, etc.
+        if (devState != DEV_END_DEVICE) {
             LREP("devState=%d try to restore network\r\n", devState);
 
             // Reset failure counter on manual button press
@@ -564,7 +573,7 @@ void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
 
         #if defined(POWER_SAVING)
             // Fast poll for button responsiveness
-            NLME_SetPollRate(1);
+            NLME_SetPollRate(QUEUED_POLL_RATE);
             // Revert to normal poll rate after 3 seconds
             osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT, 3000);
         #endif

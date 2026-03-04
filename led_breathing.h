@@ -3,8 +3,9 @@
 
 #include "hal_types.h"
 
-// LED Breathing event for OSAL (must not conflict with app events in zcl_app.h)
-#define LED_BREATHING_EVT 0x0004
+// LED Breathing event for OSAL — runs on commissioning task
+// Must not conflict with commissioning events (0x0001-0x0010) or factory_reset events (0x1000-0x4000)
+#define LED_BREATHING_EVT 0x0020
 
 // Function prototypes
 extern void led_breathing_init(uint8 task_id);

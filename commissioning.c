@@ -6,7 +6,6 @@
 #include "bdb_interface.h"
 #include "hal_key.h"
 #include "hal_led.h"
-#include "led_breathing.h"
 #include "nwk_globals.h"
 #include "zcl_app.h"  // For TX power mode access
 #include "ZMAC.h"     // For TX_PWR constants
@@ -72,22 +71,17 @@ static void zclCommissioning_SaveBackoffState(void) {
  */
 void zclCommissioning_StartPairingMode(void) {
     pairing_mode_active = true;
-    // Cancel any pending poll-rate changes to keep device responsive during pairing
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT);
 
-    // Slow breathing LED during pairing
-    led_breathing_start();
+    // Simple LED: continuous blink during pairing (HalLedSet MODE_BLINK is properly cancelled by MODE_OFF)
+    HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
 
 #if defined(POWER_SAVING)
-    // Set fast poll rate during pairing for quick response to coordinator
-    NLME_SetPollRate(QUEUED_POLL_RATE); // 100ms - fast polling during pairing
-    LREP("Pairing mode: Fast poll rate enabled for coordinator communication\r\n");
+    NLME_SetPollRate(QUEUED_POLL_RATE);
 #endif
 
-    LREP("Pairing mode: Fast LED blinks\r\n");
-    // Slow down LED after 30s to save battery
-    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT, 30000);
+    LREP("Pairing mode: LED blinking\r\n");
     osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT, APP_COMMISSIONING_PAIRING_TIMEOUT);
 }
 
@@ -206,8 +200,9 @@ static void zclCommissioning_CheckDeepSleep(void) {
         // Use very long delay to save battery
         rejoinDelay = APP_COMMISSIONING_DEEP_SLEEP_INTERVAL;
 
-        // Visual feedback - 3 slow blinks
-        HalLedBlink(HAL_LED_1, 3, 100, 1000);
+        // Visual feedback - brief flash (avoid HalLedBlink on SED — leaves HAL timer running)
+        HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);
+        // LED will be turned off when sleep is entered (or by next event loop)
 
         LREP("Battery saver: 1-hour rejoin interval active\r\n");
     }
@@ -215,8 +210,6 @@ static void zclCommissioning_CheckDeepSleep(void) {
 
 void zclCommissioning_Init(uint8 task_id) {
     zclCommissioning_TaskId = task_id;
-
-    led_breathing_init(task_id);
 
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
@@ -288,8 +281,9 @@ static void zclCommissioning_OnConnect(void) {
     LREP("Fast poll (%dms) for interview\r\n", QUEUED_POLL_RATE);
 #endif
 
-    // Stay awake for 2 minutes to allow coordinator to complete interview/configuration
+    // Stay awake for 60 seconds to allow coordinator to complete interview/configuration
     // (endpoint discovery, attribute reads, binding, reporting configuration)
+    // Z2M typically completes in 30-60s, ZHA in 30-90s.
     // After this period, poll rate reverts to normal via CLOCK_DOWN_POLING_RATE_EVT
     LREP("Staying awake for %d seconds for coordinator interview\r\n", APP_COMMISSIONING_INTERVIEW_PERIOD / 1000);
     osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, APP_COMMISSIONING_INTERVIEW_PERIOD);
@@ -318,20 +312,13 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
     case BDB_COMMISSIONING_NWK_STEERING:
         switch (bdbCommissioningModeMsg->bdbCommissioningStatus) {
         case BDB_COMMISSIONING_SUCCESS:
-            // Stop fast blinking, show success pattern
             if (pairing_mode_active) {
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
-                osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
-                led_breathing_stop();
-                // Success: 3 slow blinks
-                HalLedBlink(HAL_LED_1, 3, 50, 1000);
                 pairing_mode_active = false;
-                LREP("Pairing SUCCESS: 3 slow blinks\r\n");
-            } else {
-                // Automatic rejoin success (not user-initiated) - silent
-                LREP("Rejoin success (silent)\r\n");
             }
+            // Success: 5 blinks, then ZDO_STATE_CHANGE → DEV_END_DEVICE will turn LED off
+            HalLedBlink(HAL_LED_1, 5, 50, 500);
             LREPMaster("BDB_COMMISSIONING_SUCCESS\r\n");
             zclCommissioning_OnConnect();
             break;
@@ -434,13 +421,9 @@ void zclCommissioning_Sleep(uint8 allow) {
     LREP("zclCommissioning_Sleep %d\r\n", allow);
 #if defined(POWER_SAVING)
     if (allow) {
-        // Keep a normal poll rate so configuration/commands can still be received
         NLME_SetPollRate(POLL_RATE);
-
-        // Turn off LED / stop breathing
-        led_breathing_stop();
-
-        LREP("Entering low poll mode - LED off\r\n");
+        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+        LREP("Sleep mode - LED off\r\n");
     } else {
         NLME_SetPollRate(POLL_RATE);
     }
@@ -458,12 +441,8 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
                 zclApp_NwkState = (devStates_t)(MSGpkt->hdr.status);
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
-                    // Connected - LED will be turned off after interview period
-                    // Don't turn it off here to avoid interfering with success pattern
-                    LREP("Device connected (state=DEV_END_DEVICE)\r\n");
-                } else {
-                    // State change - no LED feedback needed for intermediate states
-                    LREP("State change: %d\r\n", zclApp_NwkState);
+                    HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                    LREP("Connected - LED off\r\n");
                 }
                 break;
 
@@ -509,28 +488,17 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_POLL_NORMAL_EVT);
     }
 
-    if (events & APP_COMMISSIONING_LED_SLOWDOWN_EVT) {
-        // No-op: breathing effect is already battery-efficient
-        return (events ^ APP_COMMISSIONING_LED_SLOWDOWN_EVT);
-    }
-
     if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
         if (pairing_mode_active) {
             pairing_mode_active = false;
             osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
-            osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_LED_SLOWDOWN_EVT);
-            led_breathing_stop();
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
 #if defined(POWER_SAVING)
             NLME_SetPollRate(POLL_RATE);
 #endif
             LREPMaster("Pairing timeout: LED off, normal poll rate\r\n");
         }
         return (events ^ APP_COMMISSIONING_PAIRING_TIMEOUT_EVT);
-    }
-
-    // Dispatch LED breathing events (runs on this task)
-    if (events & LED_BREATHING_EVT) {
-        return led_breathing_event_loop(task_id, events);
     }
 
     // Discard unknown events

@@ -1,9 +1,15 @@
 /*********************************************************************
- * LED Breathing Effect - Pseudo-breathing via stepped duty cycle
+ * LED Breathing Effect - Simple slow blink using HalLedSet + OSAL timer
  *
- * Hardware PWM can't reach LED pin (P0_1) on this board. Instead,
- * cycle through duty-cycle steps using HalLedBlink every 200ms to
- * create a visible fade-in/fade-out envelope. Low CPU overhead.
+ * IMPORTANT: Do NOT use HalLedBlink() on battery SEDs!
+ * HalLedBlink() starts an internal HAL task timer (HAL_LED_BLINK_EVENT)
+ * that cannot be cancelled from application code. This causes:
+ *   1. LED turning back ON after led_breathing_stop()
+ *   2. Pending HAL timer preventing PM2/PM3 sleep entry
+ *   3. Wasted battery from phantom wake-ups
+ *
+ * Instead, use HalLedSet() (direct GPIO) + our own OSAL timer.
+ * Simple ON/OFF toggle every 500ms = visible, battery-friendly.
  *********************************************************************/
 
 #include "led_breathing.h"
@@ -12,15 +18,12 @@
 #include "OSAL.h"
 #include "Debug.h"
 
-#define LED_BREATHING_STEP_MS  200
-
-/* Duty cycle envelope: ramp up then ramp down (percentage on-time) */
-static const uint8 breathe_duty[] = {5, 15, 30, 50, 70, 90, 70, 50, 30, 15};
-#define BREATHE_STEPS (sizeof(breathe_duty) / sizeof(breathe_duty[0]))
+/* Slow blink: 500ms ON, 500ms OFF = 1 Hz blink rate */
+#define LED_BREATHING_STEP_MS  500
 
 static uint8 led_breathing_task_id = 0;
 static bool led_breathing_active = false;
-static uint8 breathe_index = 0;
+static bool led_state_on = false;
 
 void led_breathing_init(uint8 task_id) {
     led_breathing_task_id = task_id;
@@ -31,8 +34,8 @@ void led_breathing_start(void) {
         return;
     }
     led_breathing_active = true;
-    breathe_index = 0;
-    HalLedBlink(HAL_LED_1, 1, breathe_duty[0], LED_BREATHING_STEP_MS);
+    led_state_on = true;
+    HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);
     osal_start_timerEx(led_breathing_task_id, LED_BREATHING_EVT, LED_BREATHING_STEP_MS);
 }
 
@@ -41,8 +44,10 @@ void led_breathing_stop(void) {
         return;
     }
     led_breathing_active = false;
+    led_state_on = false;
     osal_stop_timerEx(led_breathing_task_id, LED_BREATHING_EVT);
     HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+    /* No HAL internal timers left running — safe for PM2/PM3 entry */
 }
 
 bool led_breathing_is_active(void) {
@@ -52,8 +57,9 @@ bool led_breathing_is_active(void) {
 uint16 led_breathing_event_loop(uint8 task_id, uint16 events) {
     if (events & LED_BREATHING_EVT) {
         if (led_breathing_active) {
-            breathe_index = (breathe_index + 1) % BREATHE_STEPS;
-            HalLedBlink(HAL_LED_1, 1, breathe_duty[breathe_index], LED_BREATHING_STEP_MS);
+            /* Toggle LED using direct GPIO set — no HAL blink timers */
+            led_state_on = !led_state_on;
+            HalLedSet(HAL_LED_1, led_state_on ? HAL_LED_MODE_ON : HAL_LED_MODE_OFF);
             osal_start_timerEx(led_breathing_task_id, LED_BREATHING_EVT, LED_BREATHING_STEP_MS);
         }
         return (events ^ LED_BREATHING_EVT);

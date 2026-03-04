@@ -23,7 +23,7 @@ uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
         // User has held button for 1+ second - show continuous fast blink as warning
         LREPMaster("FACTORY_RESET_HOLD_WARNING: Starting LED feedback\r\n");
         zclFactoryResetter_WarningActive = true;
-        HalLedBlink(HAL_LED_1, 0, 50, 200);  // Continuous blink: 50% duty, 200ms period
+        HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);  // Solid ON warning (avoid HalLedBlink on SED)
         return (events ^ FACTORY_RESET_HOLD_WARNING_EVT);
     }
 

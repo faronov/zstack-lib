@@ -5,7 +5,6 @@
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_EVT       0x0002
 #define APP_COMMISSIONING_PAIRING_TIMEOUT_EVT         0x0004
 #define APP_COMMISSIONING_POLL_NORMAL_EVT             0x0008
-#define APP_COMMISSIONING_LED_SLOWDOWN_EVT            0x0010
 
 // Enhanced rejoin strategy (Hybrid Phase 2)
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_MAX_DELAY ((uint32)900000) // 15 minutes (reduced from 30 for battery)
@@ -14,7 +13,9 @@
 #define APP_COMMISSIONING_END_DEVICE_REJOIN_TRIES 30 // Increased from 20
 
 // Interview/configuration period after successful join
-#define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)300000) // 300 seconds (5 minutes) for coordinator interview
+// Phase 1: QUEUED_POLL_RATE (100ms) for 60s — covers Z2M/ZHA interview
+// Phase 2: POLL_RATE (60s) — normal operation
+#define APP_COMMISSIONING_INTERVIEW_PERIOD ((uint32)60000) // 60 seconds for coordinator interview
 #define APP_COMMISSIONING_PAIRING_TIMEOUT ((uint32)300000)  // 5 minutes max fast-blink pairing window
 
 // Deep sleep mode after many failures

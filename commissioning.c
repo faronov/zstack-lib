@@ -6,6 +6,7 @@
 #include "bdb_interface.h"
 #include "hal_key.h"
 #include "hal_led.h"
+#include "led_breathing.h"
 #include "nwk_globals.h"
 #include "zcl_app.h"  // For TX power mode access
 #include "ZMAC.h"     // For TX_PWR constants
@@ -74,8 +75,8 @@ void zclCommissioning_StartPairingMode(void) {
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT);
 
-    // Simple LED: continuous blink during pairing (HalLedSet MODE_BLINK is properly cancelled by MODE_OFF)
-    HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+    // OSAL-safe blink: 1Hz toggle via led_breathing (no HAL timer — safe for SED sleep)
+    led_breathing_start();
 
 #if defined(POWER_SAVING)
     NLME_SetPollRate(QUEUED_POLL_RATE);
@@ -200,9 +201,9 @@ static void zclCommissioning_CheckDeepSleep(void) {
         // Use very long delay to save battery
         rejoinDelay = APP_COMMISSIONING_DEEP_SLEEP_INTERVAL;
 
-        // Visual feedback - brief flash (avoid HalLedBlink on SED — leaves HAL timer running)
+        // Brief 200ms flash — explicit off timer so LED doesn't stay on during 1hr sleep
         HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);
-        // LED will be turned off when sleep is entered (or by next event loop)
+        osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT, 200);
 
         LREP("Battery saver: 1-hour rejoin interval active\r\n");
     }
@@ -210,6 +211,7 @@ static void zclCommissioning_CheckDeepSleep(void) {
 
 void zclCommissioning_Init(uint8 task_id) {
     zclCommissioning_TaskId = task_id;
+    led_breathing_init(task_id);
 
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
@@ -317,8 +319,9 @@ static void zclCommissioning_ProcessCommissioningStatus(bdbCommissioningModeMsg_
                 osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
                 pairing_mode_active = false;
             }
-            // Success: 5 blinks, then ZDO_STATE_CHANGE → DEV_END_DEVICE will turn LED off
-            HalLedBlink(HAL_LED_1, 5, 50, 500);
+            // Success: stop blink, solid ON — ZDO_STATE_CHANGE → DEV_END_DEVICE will turn off
+            led_breathing_stop();
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);
             LREPMaster("BDB_COMMISSIONING_SUCCESS\r\n");
             zclCommissioning_OnConnect();
             break;
@@ -422,6 +425,7 @@ void zclCommissioning_Sleep(uint8 allow) {
 #if defined(POWER_SAVING)
     if (allow) {
         NLME_SetPollRate(POLL_RATE);
+        led_breathing_stop();
         HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
         LREP("Sleep mode - LED off\r\n");
     } else {
@@ -441,6 +445,7 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
                 zclApp_NwkState = (devStates_t)(MSGpkt->hdr.status);
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
+                    led_breathing_stop();
                     HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
                     LREP("Connected - LED off\r\n");
                 }
@@ -488,11 +493,15 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_COMMISSIONING_POLL_NORMAL_EVT);
     }
 
+    if (events & LED_BREATHING_EVT) {
+        return led_breathing_event_loop(task_id, events);
+    }
+
     if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
         if (pairing_mode_active) {
             pairing_mode_active = false;
             osal_stop_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_END_DEVICE_REJOIN_EVT);
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+            led_breathing_stop();
 #if defined(POWER_SAVING)
             NLME_SetPollRate(POLL_RATE);
 #endif

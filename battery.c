@@ -69,6 +69,42 @@ uint8 getBatteryRemainingPercentageZCLCR2032(uint16 volt16) {
     return (uint8)(battery_level * 2);
 }
 
+uint8 getBatteryRemainingPercentageZCLNiMH2S(uint16 mv) {
+    uint16 p;
+    if (mv >= 2700) {
+        p = 100;
+    } else if (mv > 2500) {
+        p = 80 + ((mv - 2500) * 20) / 200;
+    } else if (mv > 2400) {
+        p = 50 + ((mv - 2400) * 30) / 100;
+    } else if (mv > 2200) {
+        p = 10 + ((mv - 2200) * 40) / 200;
+    } else if (mv > 2000) {
+        p = ((mv - 2000) * 10) / 200;
+    } else {
+        p = 0;
+    }
+    return (uint8)(p * 2);
+}
+
+uint8 getBatteryRemainingPercentageZCLAlkaline2S(uint16 mv) {
+    uint16 p;
+    if (mv >= 3000) {
+        p = 100;
+    } else if (mv > 2800) {
+        p = 80 + ((mv - 2800) * 20) / 200;
+    } else if (mv > 2500) {
+        p = 40 + ((mv - 2500) * 40) / 300;
+    } else if (mv > 2200) {
+        p = 10 + ((mv - 2200) * 30) / 300;
+    } else if (mv > 2000) {
+        p = ((mv - 2000) * 10) / 200;
+    } else {
+        p = 0;
+    }
+    return (uint8)(p * 2);
+}
+
 static void zclBattery_SendReportDirect(void) {
     const uint8 NUM_ATTRIBUTES = 3;
     zclReportCmd_t *pReportCmd;

@@ -13,6 +13,8 @@ extern uint16 getBatteryVoltage(void);
 extern uint8 getBatteryVoltageZCL(uint16 millivolts);
 extern uint8 getBatteryRemainingPercentageZCL(uint16 millivolts);
 extern uint8 getBatteryRemainingPercentageZCLCR2032(uint16 volt16);
+extern uint8 getBatteryRemainingPercentageZCLNiMH2S(uint16 mv);
+extern uint8 getBatteryRemainingPercentageZCLAlkaline2S(uint16 mv);
 
 extern void zclBattery_Init(uint8 task_id);
 extern uint16 zclBattery_event_loop(uint8 task_id, uint16 events);

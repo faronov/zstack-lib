@@ -5,6 +5,7 @@
 #include "bdb.h"
 #include "bdb_interface.h"
 #include "hal_led.h"
+#include "led_breathing.h"
 #include "ZComDef.h"
 #include "hal_key.h"
 #include "commissioning.h"
@@ -23,6 +24,7 @@ uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
         // User has held button for 1+ second - show continuous fast blink as warning
         LREPMaster("FACTORY_RESET_HOLD_WARNING: Starting LED feedback\r\n");
         zclFactoryResetter_WarningActive = true;
+        led_breathing_stop();  // Stop pairing blink so solid ON is visible
         HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);  // Solid ON warning (avoid HalLedBlink on SED)
         return (events ^ FACTORY_RESET_HOLD_WARNING_EVT);
     }

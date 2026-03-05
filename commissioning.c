@@ -221,12 +221,12 @@ void zclCommissioning_Init(uint8 task_id) {
     // BDB network state from trapping the device in a rejoin-only loop.
     // This adds one extra reboot on firmware update — second boot starts clean.
     {
-        uint8 nv_stamp[sizeof(zclApp_DateCode)] = {0};
+        uint8 nv_stamp[FW_VERSION_STAMP_LEN] = {0};
         bool fw_changed = true;  // Assume changed until proven same
 
-        osal_nv_item_init(ZCD_NV_FW_VERSION_STAMP, sizeof(zclApp_DateCode), (void *)zclApp_DateCode);
-        if (osal_nv_read(ZCD_NV_FW_VERSION_STAMP, 0, sizeof(zclApp_DateCode), nv_stamp) == SUCCESS) {
-            if (osal_memcmp(nv_stamp, (void *)zclApp_DateCode, sizeof(zclApp_DateCode)) == TRUE) {
+        osal_nv_item_init(ZCD_NV_FW_VERSION_STAMP, FW_VERSION_STAMP_LEN, (void *)zclApp_DateCode);
+        if (osal_nv_read(ZCD_NV_FW_VERSION_STAMP, 0, FW_VERSION_STAMP_LEN, nv_stamp) == SUCCESS) {
+            if (osal_memcmp(nv_stamp, (void *)zclApp_DateCode, FW_VERSION_STAMP_LEN) == TRUE) {
                 fw_changed = false;
             }
         }
@@ -234,7 +234,7 @@ void zclCommissioning_Init(uint8 task_id) {
         if (fw_changed) {
             LREPMaster("FW version changed — factory reset for clean join\r\n");
             // Write stamp FIRST so the reboot doesn't loop
-            osal_nv_write(ZCD_NV_FW_VERSION_STAMP, 0, sizeof(zclApp_DateCode), (void *)zclApp_DateCode);
+            osal_nv_write(ZCD_NV_FW_VERSION_STAMP, 0, FW_VERSION_STAMP_LEN, (void *)zclApp_DateCode);
             // Clear app-level commissioning state
             zclCommissioning_ResetState();
             // Full BDB reset: clears network keys, bdbNodeIsOnANetwork, triggers SystemReset()

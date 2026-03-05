@@ -41,7 +41,7 @@ typedef struct {
     uint16 rejoin_failures;      // Failed rejoins
     uint32 last_rejoin_time_ms;  // Time for last rejoin (ms)
     uint8 last_channel;          // Last successful channel (11-26)
-    uint8 current_tx_power;      // Current TX power (0-4 for 0dBm to +4dBm)
+    int8 current_tx_power;       // Current TX power in dBm (signed for PA devices)
     uint16 consecutive_failures; // Consecutive rejoin failures
 } NetworkMetrics_t;
 

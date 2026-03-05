@@ -32,6 +32,7 @@ uint8 zclCommissioning_TaskId = 0;
 
 // Hybrid Phase 2: Network Quality Metrics (typedef moved to header)
 NetworkMetrics_t network_metrics = {0}; // Non-static for ZCL access
+bool zclCommissioning_interviewActive = false; // Non-static: app checks before post-report poll revert
 static int8 current_tx_power = 0; // Start at 0 dBm (TX_PWR_0_DBM) to save battery — int8 matches NetworkMetrics_t.current_tx_power
 static bool quick_rejoin_attempted = false;
 
@@ -283,6 +284,7 @@ static void zclCommissioning_OnConnect(void) {
 
     // Fast poll during interview so coordinator can configure reporting/bindings quickly
 #if defined(POWER_SAVING)
+    zclCommissioning_interviewActive = true;
     NLME_SetPollRate(QUEUED_POLL_RATE);
     LREP("Fast poll (%dms) for interview\r\n", QUEUED_POLL_RATE);
 #endif
@@ -487,6 +489,7 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
 
     if (events & APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT) {
         LREPMaster("APP_CLOCK_DOWN_POLING_RATE_EVT\r\n");
+        zclCommissioning_interviewActive = false;
         zclCommissioning_Sleep(true);
         return (events ^ APP_COMMISSIONING_CLOCK_DOWN_POLING_RATE_EVT);
     }

@@ -50,6 +50,10 @@ typedef struct {
 // Global network metrics (accessible for ZCL reporting)
 extern NetworkMetrics_t network_metrics;
 
+// Interview state flag — set during post-join fast-poll window.
+// Used by app layer to avoid interfering with interview fast-poll.
+extern bool zclCommissioning_interviewActive;
+
 extern void zclCommissioning_Init(uint8 task_id);
 extern uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events);
 extern void zclCommissioning_Sleep( uint8 allow );

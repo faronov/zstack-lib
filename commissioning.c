@@ -216,32 +216,9 @@ void zclCommissioning_Init(uint8 task_id) {
     bdb_RegisterCommissioningStatusCB(zclCommissioning_ProcessCommissioningStatus);
     bdb_RegisterBindNotificationCB(zclCommissioning_BindNotification);
 
-    // Detect firmware update by comparing NV version stamp with compiled-in date code.
-    // On mismatch (or missing stamp), do a full factory reset to prevent stale
-    // BDB network state from trapping the device in a rejoin-only loop.
-    // This adds one extra reboot on firmware update — second boot starts clean.
-    {
-        uint8 nv_stamp[FW_VERSION_STAMP_LEN] = {0};
-        bool fw_changed = true;  // Assume changed until proven same
-
-        osal_nv_item_init(ZCD_NV_FW_VERSION_STAMP, FW_VERSION_STAMP_LEN, (void *)zclApp_DateCode);
-        if (osal_nv_read(ZCD_NV_FW_VERSION_STAMP, 0, FW_VERSION_STAMP_LEN, nv_stamp) == SUCCESS) {
-            if (osal_memcmp(nv_stamp, (void *)zclApp_DateCode, FW_VERSION_STAMP_LEN) == TRUE) {
-                fw_changed = false;
-            }
-        }
-
-        if (fw_changed) {
-            LREPMaster("FW version changed — factory reset for clean join\r\n");
-            // Write stamp FIRST so the reboot doesn't loop
-            osal_nv_write(ZCD_NV_FW_VERSION_STAMP, 0, FW_VERSION_STAMP_LEN, (void *)zclApp_DateCode);
-            // Clear app-level commissioning state
-            zclCommissioning_ResetState();
-            // Full BDB reset: clears network keys, bdbNodeIsOnANetwork, triggers SystemReset()
-            bdb_resetLocalAction();
-            // Execution never reaches here — device reboots
-        }
-    }
+    // FW version stamp disabled — was causing infinite reboot loop on fresh flash
+    // TODO: investigate why bdb_resetLocalAction() prevents normal boot
+    // Original intent: detect firmware update, auto-clear stale BDB NV state
 
     // Hybrid Phase 2: Load network metrics from NV
     if (osal_nv_read(ZCD_NV_NETWORK_METRICS, 0, sizeof(NetworkMetrics_t), &network_metrics) == SUCCESS) {

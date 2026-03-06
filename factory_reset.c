@@ -16,15 +16,19 @@ static void zclFactoryResetter_ResetBootCounter(void);
 
 static uint8 zclFactoryResetter_TaskID;
 bool zclFactoryResetter_WarningActive = false;
+static bool breathing_was_active_before_warning = false;
 
 uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
     LREP("zclFactoryResetter_loop 0x%X\r\n", events);
 
     if (events & FACTORY_RESET_HOLD_WARNING_EVT) {
-        // User has held button for 1+ second - show continuous fast blink as warning
+        // User has held button long enough — show solid LED as "factory reset imminent" warning
         LREPMaster("FACTORY_RESET_HOLD_WARNING: Starting LED feedback\r\n");
         zclFactoryResetter_WarningActive = true;
-        led_breathing_stop();  // Stop pairing blink so solid ON is visible
+        breathing_was_active_before_warning = led_breathing_is_active();
+        if (breathing_was_active_before_warning) {
+            led_breathing_stop();  // Stop pairing blink so solid ON is visible
+        }
         HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);  // Solid ON warning (avoid HalLedBlink on SED)
         return (events ^ FACTORY_RESET_HOLD_WARNING_EVT);
     }
@@ -77,8 +81,14 @@ void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode) {
         osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_EVT);
         osal_stop_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT);
         if (zclFactoryResetter_WarningActive) {
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);  // Stop LED feedback only if warning was active
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
             zclFactoryResetter_WarningActive = false;
+            // Restore pairing LED if it was running before the warning interrupted it
+            // (user released between warning and factory reset — pairing continues)
+            if (breathing_was_active_before_warning) {
+                led_breathing_start();
+                breathing_was_active_before_warning = false;
+            }
         }
     } else {
         LREPMaster("zclFactoryResetter: Key press\r\n");
@@ -90,10 +100,13 @@ void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode) {
         if (statTimer) {
             uint32 timeout = bdbAttributes.bdbNodeIsOnANetwork ? FACTORY_RESET_HOLD_TIME_LONG : FACTORY_RESET_HOLD_TIME_FAST;
 
-            // Start warning LED feedback after 1 second of holding
-            osal_start_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT, 1000);
+            // Start visual warning 3 seconds before factory reset fires
+            // (e.g., at 7s for a 10s reset). Solid LED ON tells user:
+            // "keep holding 3 more seconds for factory reset, or release to cancel"
+            uint32 warningDelay = (timeout > 3000) ? (timeout - 3000) : 1000;
+            osal_start_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_HOLD_WARNING_EVT, warningDelay);
 
-            // Start actual factory reset timer (3 seconds)
+            // Start actual factory reset timer
             osal_start_timerEx(zclFactoryResetter_TaskID, FACTORY_RESET_EVT, timeout);
         }
     }

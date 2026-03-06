@@ -537,29 +537,42 @@ static void zclCommissioning_BindNotification(bdbBindNotificationData_t *data) {
 
 void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
     if (portAndAction & HAL_KEY_PRESS) {
+        bool pairingStarted = false;
 #if ZG_BUILD_ENDDEVICE_TYPE
-        // Attempt network recovery in any disconnected state (not just ORPHAN)
-        // This handles: DEV_NWK_ORPHAN, DEV_HOLD, DEV_INIT, etc.
+        // Attempt network recovery or fresh pairing depending on state
         if (devState != DEV_END_DEVICE) {
-            LREP("devState=%d try to restore network\r\n", devState);
+            if (bdbAttributes.bdbNodeIsOnANetwork) {
+                // Was on network, lost parent — try to recover existing connection
+                LREP("devState=%d try to restore network\r\n", devState);
 
-            // Reset failure counter on manual button press
-            // Allows fresh start after "give up" threshold reached
-            if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
-                LREP("Button pressed - resetting failure counter for fresh attempt\r\n");
-                network_metrics.consecutive_failures = 0;
-                zclCommissioning_ResetBackoffRetry();
+                // Reset failure counter on manual button press
+                // Allows fresh start after "give up" threshold reached
+                if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
+                    LREP("Button pressed - resetting failure counter for fresh attempt\r\n");
+                    network_metrics.consecutive_failures = 0;
+                    zclCommissioning_ResetBackoffRetry();
+                }
+
+                bdb_ZedAttemptRecoverNwk();
+            } else {
+                // Never joined or factory reset — start/restart pairing mode
+                // This restarts the 5-minute pairing window with LED breathing
+                LREP("devState=%d starting pairing mode\r\n", devState);
+                zclCommissioning_StartPairingMode();
+                bdb_StartCommissioning(BDB_COMMISSIONING_MODE_NWK_STEERING | BDB_COMMISSIONING_MODE_FINDING_BINDING);
+                pairingStarted = true;  // StartPairingMode handles poll rate
             }
-
-            bdb_ZedAttemptRecoverNwk();
         }
 #endif
 
         #if defined(POWER_SAVING)
-            // Fast poll for button responsiveness
-            NLME_SetPollRate(QUEUED_POLL_RATE);
-            // Revert to normal poll rate after 3 seconds
-            osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT, 3000);
+            // Fast poll for button responsiveness (skip if pairing mode
+            // already set fast poll — the 3s revert would kill it)
+            if (!pairingStarted) {
+                NLME_SetPollRate(QUEUED_POLL_RATE);
+                // Revert to normal poll rate after 3 seconds
+                osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_POLL_NORMAL_EVT, 3000);
+            }
         #endif
     }
 }

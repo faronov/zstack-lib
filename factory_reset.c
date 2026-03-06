@@ -15,7 +15,7 @@ static void zclFactoryResetter_ProcessBootCounter(void);
 static void zclFactoryResetter_ResetBootCounter(void);
 
 static uint8 zclFactoryResetter_TaskID;
-static bool zclFactoryResetter_WarningActive = false;
+bool zclFactoryResetter_WarningActive = false;
 
 uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events) {
     LREP("zclFactoryResetter_loop 0x%X\r\n", events);

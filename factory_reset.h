@@ -35,6 +35,8 @@
     #define FACTORY_RESET_BY_BOOT_COUNTER TRUE
 #endif
 
+extern bool zclFactoryResetter_WarningActive;
+
 extern void zclFactoryResetter_Init(uint8 task_id);
 extern uint16 zclFactoryResetter_loop(uint8 task_id, uint16 events);
 extern void zclFactoryResetter_HandleKeys(uint8 portAndAction, uint8 keyCode);

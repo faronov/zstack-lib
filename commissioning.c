@@ -39,6 +39,9 @@ static bool quick_rejoin_attempted = false;
 // Aqara-style LED behavior: track if we're in user-initiated pairing mode
 static bool pairing_mode_active = false;
 
+// Join-success 3-flash state machine (100ms ON/OFF × 3)
+static uint8 join_flash_counter = 0;
+
 // Boot-time join retry: keep retrying every 30s during the 5-minute pairing window
 #define APP_COMMISSIONING_JOIN_RETRY_INTERVAL ((uint32)30000)  // 30 seconds between join attempts
 
@@ -282,6 +285,13 @@ static void zclCommissioning_OnConnect(void) {
 
     zclCommissioning_ResetBackoffRetry();
 
+    // Join-success LED pattern: 3 quick flashes (100ms ON/OFF × 3)
+    // Uses OSAL timer state machine — never HalLedBlink (SED-safe)
+    led_breathing_stop();
+    join_flash_counter = 6;  // 3 ON + 3 OFF transitions
+    HalLedSet(HAL_LED_1, HAL_LED_MODE_ON);  // First flash ON
+    osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_JOIN_FLASH_EVT, 100);
+
     // Fast poll during interview so coordinator can configure reporting/bindings quickly
 #if defined(POWER_SAVING)
     zclCommissioning_interviewActive = true;
@@ -452,7 +462,11 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
                 LREP("NwkState=%d\r\n", zclApp_NwkState);
                 if (zclApp_NwkState == DEV_END_DEVICE) {
                     led_breathing_stop();
-                    HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                    // Only force LED off if join-flash isn't running
+                    // (OnConnect starts the 3-flash sequence after this fires)
+                    if (join_flash_counter == 0) {
+                        HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+                    }
                     LREP("Connected - LED off\r\n");
                 }
                 break;
@@ -504,6 +518,21 @@ uint16 zclCommissioning_event_loop(uint8 task_id, uint16 events) {
         return led_breathing_event_loop(task_id, events);
     }
 
+    if (events & APP_COMMISSIONING_JOIN_FLASH_EVT) {
+        // 3-flash join-success state machine: counter counts down from 6
+        // 5=OFF, 4=ON, 3=OFF, 2=ON, 1=OFF, 0=done
+        if (join_flash_counter > 0) {
+            join_flash_counter--;
+            if (join_flash_counter > 0) {
+                HalLedSet(HAL_LED_1, (join_flash_counter & 1) ? HAL_LED_MODE_OFF : HAL_LED_MODE_ON);
+                osal_start_timerEx(zclCommissioning_TaskId, APP_COMMISSIONING_JOIN_FLASH_EVT, 100);
+            } else {
+                HalLedSet(HAL_LED_1, HAL_LED_MODE_OFF);
+            }
+        }
+        return (events ^ APP_COMMISSIONING_JOIN_FLASH_EVT);
+    }
+
     if (events & APP_COMMISSIONING_PAIRING_TIMEOUT_EVT) {
         if (pairing_mode_active) {
             pairing_mode_active = false;
@@ -539,21 +568,15 @@ void zclCommissioning_HandleKeys(uint8 portAndAction, uint8 keyCode) {
     if (portAndAction & HAL_KEY_PRESS) {
         bool pairingStarted = false;
 #if ZG_BUILD_ENDDEVICE_TYPE
-        // Attempt network recovery or fresh pairing depending on state
         if (devState != DEV_END_DEVICE) {
             if (bdbAttributes.bdbNodeIsOnANetwork) {
-                // Was on network, lost parent — try to recover existing connection
-                LREP("devState=%d try to restore network\r\n", devState);
-
-                // Reset failure counter on manual button press
-                // Allows fresh start after "give up" threshold reached
+                // On network but disconnected: reset give-up counter on button press
+                // (3s hold will trigger bdb_StartCommissioning for network recovery)
                 if (network_metrics.consecutive_failures >= APP_COMMISSIONING_GIVE_UP_THRESHOLD) {
                     LREP("Button pressed - resetting failure counter for fresh attempt\r\n");
                     network_metrics.consecutive_failures = 0;
                     zclCommissioning_ResetBackoffRetry();
                 }
-
-                bdb_ZedAttemptRecoverNwk();
             } else {
                 // Never joined or factory reset — start/restart pairing mode
                 // This restarts the 5-minute pairing window with LED breathing
